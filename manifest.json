@@ -1,0 +1,28 @@
+{
+  "id": "phgacha",
+  "name": "Gacha",
+  "version": "0.1.0",
+  "description": "A gacha machine for your library: pull for the next video, by rarity, with a random modifier on top.",
+  "icon": "icon.svg",
+  "author": "whatmekota",
+  "main": "dist/index.js",
+  "api": 3,
+  "minPlayhound": "2.2.0",
+  "permissions": [
+    "library",
+    "playback",
+    "player",
+    "scripts",
+    "device",
+    "stage"
+  ],
+  "category": "tools",
+  "keywords": [
+    "gacha",
+    "random",
+    "shuffle",
+    "rarity",
+    "collection",
+    "modifiers"
+  ]
+}
