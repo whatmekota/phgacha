@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- The **panel has the machine too**, smaller, with the same pull animation (the capsule, its wobble, the burst), skippable by a click. A pull there still plays at once and stays where you are; the capsule opens while the video starts.
+- **Last pulls**: a strip of the last 10 pulls, newest first, on the page between the machine and the collection (the last 5 in the panel). Each is edged in its rarity's colour with the modifier as a tag; hover for when; click to play it again without a modifier.
+
 ## 0.1.0
 
 First version, for playhound 2.2 and newer. Not published.

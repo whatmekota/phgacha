@@ -25,6 +25,15 @@ export interface LastPull {
   at: number
 }
 
+/** One pull in the timeline. */
+export interface HistoryItem {
+  id: string
+  title: string
+  tier: Tier
+  modifier: ModifierId | null
+  at: number
+}
+
 /** Everything the machine keeps, in ctx.storage under one key. */
 export interface MachineState {
   pulls: number
@@ -32,13 +41,21 @@ export interface MachineState {
   pity: number
   last: LastPull | null
   collection: Record<string, Entry>
+  /** The last pulls, newest first, at most HISTORY_MAX. */
+  history: HistoryItem[]
 }
 
 export const STORAGE_KEY = 'machine'
+/** How many pulls the timeline keeps. */
+export const HISTORY_MAX = 10
 
-export const emptyState = (): MachineState => ({ pulls: 0, pity: 0, last: null, collection: {} })
+export const emptyState = (): MachineState => ({ pulls: 0, pity: 0, last: null, collection: {}, history: [] })
+
+/** The timeline after a pull: it goes in front, the oldest falls off the end. */
+export const pushHistory = (h: HistoryItem[], item: HistoryItem, max = HISTORY_MAX): HistoryItem[] => [item, ...h].slice(0, max)
 
 const isTier = (v: unknown): v is Tier => TIERS.includes(v as Tier)
+const isModifier = (v: unknown): v is ModifierId => MODIFIER_IDS.includes(v as ModifierId)
 const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0)
 
 /** What was stored, checked: anything that doesn't fit is dropped rather than trusted. */
@@ -55,7 +72,7 @@ export function readState(raw: unknown): MachineState {
       id: last.id,
       title: typeof last.title === 'string' ? last.title : last.id,
       tier: last.tier,
-      modifier: MODIFIER_IDS.includes(last.modifier as ModifierId) ? last.modifier as ModifierId : null,
+      modifier: isModifier(last.modifier) ? last.modifier : null,
       guaranteed: last.guaranteed === true,
       isNew: last.isNew === true,
       at: count(last.at),
@@ -66,6 +83,13 @@ export function readState(raw: unknown): MachineState {
       if (!e || !isTier(e.best))
         continue
       s.collection[id] = { title: typeof e.title === 'string' ? e.title : id, best: e.best, count: Math.max(1, count(e.count)), first: count(e.first), last: count(e.last) }
+    }
+  }
+  // Saved before the timeline existed (0.1.0): it starts empty.
+  if (Array.isArray(r.history)) {
+    for (const it of r.history as Record<string, unknown>[]) {
+      if (it && typeof it.id === 'string' && isTier(it.tier) && s.history.length < HISTORY_MAX)
+        s.history.push({ id: it.id, title: typeof it.title === 'string' ? it.title : it.id, tier: it.tier, modifier: isModifier(it.modifier) ? it.modifier : null, at: count(it.at) })
     }
   }
   return s
@@ -82,6 +106,7 @@ export function record(s: MachineState, pull: Omit<LastPull, 'isNew'>, pityAfter
     pity: pityAfter,
     last: { ...pull, isNew: !had },
     collection: { ...s.collection, [pull.id]: entry },
+    history: pushHistory(s.history, { id: pull.id, title: pull.title, tier: pull.tier, modifier: pull.modifier, at: pull.at }),
   }
 }
 
@@ -96,4 +121,19 @@ export function tally(c: Record<string, Entry>): Record<Tier, number> {
   for (const e of Object.values(c))
     out[e.best]++
   return out
+}
+
+/** "just now", "2 min ago", "3 h ago", "yesterday", "5 days ago": for the timeline's tooltips. */
+export function ago(at: number, now: number): string {
+  const s = Math.max(0, (now - at) / 1000)
+  if (s < 45)
+    return 'just now'
+  const min = Math.round(s / 60)
+  if (min < 60)
+    return `${min} min ago`
+  const hours = Math.round(min / 60)
+  if (hours < 24)
+    return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  return days === 1 ? 'yesterday' : `${days} days ago`
 }

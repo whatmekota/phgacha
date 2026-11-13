@@ -1,53 +1,23 @@
-import type { Machine, Plan } from '../machine'
-import { sameVideo } from '../machine'
+import type { Machine } from '../machine'
 import type { Config } from '../settings'
 import type { PluginContext } from '../types'
 import type { CardData } from './card'
 import { sorted, tally } from '../collection'
-import { ODDS, pityDue } from '../pick'
+import { sameVideo } from '../machine'
+import { ODDS } from '../pick'
 import { reasons, TIER_INFO, TIERS } from '../rarity'
-import { capsule, machine as machineArt, stars } from './art'
+import { capsule, stars } from './art'
 import { lazyThumbs, resultCard, setTier, thumb } from './card'
-import { h, reducedMotion, svg } from './dom'
+import { h, svg } from './dom'
+import { machineView, pityMeter } from './machineView'
+import { timeline } from './timeline'
 
 /** How long the page waits after the reveal before going to the player. */
 const TO_PLAYER_MS = 2200
 
-/** Sleeps that a click can cut short: skipping the animation runs the rest at once. */
-function skippable() {
-  let skipped = false
-  const waiting = new Set<() => void>()
-  return {
-    sleep(ms: number): Promise<void> {
-      if (skipped)
-        return Promise.resolve()
-      return new Promise((resolve) => {
-        const done = () => {
-          clearTimeout(timer)
-          waiting.delete(done)
-          resolve()
-        }
-        const timer = setTimeout(done, ms)
-        waiting.add(done)
-      })
-    },
-    skip() {
-      skipped = true
-      for (const done of [...waiting])
-        done()
-    },
-  }
-}
-
-/** Sets the tier colour variable on the stage (for the capsule's glow and burst). */
-function stageTier(stage: HTMLElement, tier: Plan['tier']) {
-  stage.style.setProperty('--phg-tier', TIER_INFO[tier].colour)
-  stage.dataset.tier = tier
-}
-
 /**
  * The machine's page: the gacha machine with its Pull button and pity
- * meter, the last pull's card, and the collection.
+ * meter, the last pull's card, the last pulls, and the collection.
  */
 export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Config, pullKey: () => string | null) {
   return (el: HTMLElement) => {
@@ -64,26 +34,16 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     let lastAt = machine.state().last?.at ?? 0
 
     // ─── The machine ───
-    const stage = h('div', { class: 'phg-stage', title: '' })
-    stage.append(svg(machineArt()))
-    const drop = h('div', { class: 'phg-drop' })
-    const burst = h('div', { class: 'phg-burst' })
-    const skipNote = h('div', { class: 'phg-skip', text: 'Click to skip' })
-    stage.append(burst, drop, skipNote)
-    let skipper: ReturnType<typeof skippable> | null = null
-    stage.addEventListener('click', () => skipper?.skip())
-
+    const view = machineView()
     const pullBtn = h('button', { type: 'button', class: 'phg-pull', onclick: () => void pull() }, 'Pull')
     const keyHint = h('p', { class: 'phg-faint' })
-    const pityLine = h('div', { class: 'phg-pity-line' })
-    const pityBar = h('span')
-    const pity = h('div', { class: 'phg-pity' }, pityLine, h('div', { class: 'phg-pity-bar' }, pityBar))
+    const pity = pityMeter()
     const odds = h('div', { class: 'phg-odds' }, ...TIERS.map((t) => {
       const s = h('span', { text: `${TIER_INFO[t].name} ${ODDS[t]}%` })
       s.style.setProperty('--phg-tier', TIER_INFO[t].colour)
       return s
     }))
-    const left = h('div', { class: 'phg-left' }, stage, pullBtn, keyHint, pity, odds)
+    const left = h('div', { class: 'phg-left' }, view.el, pullBtn, keyHint, pity.el, odds)
 
     // ─── The result ───
     const right = h('div', { class: 'phg-right' })
@@ -110,20 +70,14 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     }, 'Reset the collection')
     const coll = h('div', { class: 'phg-coll' }, collHead, grid, h('div', { class: 'phg-foot' }, resetBtn))
 
-    root.append(h('div', { class: 'phg-top' }, left, right), coll)
+    // ─── The last pulls ───
+    const recent = h('div', { class: 'phg-recent' })
+
+    root.append(h('div', { class: 'phg-top' }, left, right), recent, coll)
     const io = lazyThumbs(root)
 
     function renderMachine() {
-      const s = machine.state()
-      const c = cfg()
-      const due = pityDue(s.pity, c.pityAt)
-      pity.toggleAttribute('data-due', due)
-      pullBtn.toggleAttribute('data-due', due)
-      pityLine.replaceChildren(
-        h('span', { text: due ? 'Next pull' : 'Epic or better in' }),
-        h('b', { text: due ? 'Epic or better, guaranteed' : `${c.pityAt - s.pity} ${c.pityAt - s.pity === 1 ? 'pull' : 'pulls'}` }),
-      )
-      pityBar.style.width = `${Math.min(100, (s.pity / c.pityAt) * 100)}%`
+      pullBtn.toggleAttribute('data-due', pity.render(machine.state(), cfg()))
       const key = pullKey()
       keyHint.replaceChildren(...(key ? ['Or ', h('span', { class: 'phg-kbd', text: key }), ' anywhere in playhound'] : ['Or "Pull from the gacha" in the command palette (Ctrl K)']))
     }
@@ -172,6 +126,17 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       right.replaceChildren(...kids.filter((k): k is HTMLElement => !!k))
     }
 
+    function playAgain(id: string) {
+      void machine.replay(id)
+      ctx.ui.showStage('player')
+    }
+
+    function renderRecent() {
+      const items = machine.state().history
+      recent.hidden = !items.length
+      recent.replaceChildren(h('div', { class: 'phg-coll-head' }, h('h2', { text: 'Last pulls' }), h('span', { class: 'phg-muted', text: 'Newest first. Click one to play it again, without a modifier.' })), timeline(machine, items, playAgain))
+    }
+
     function renderCollection() {
       const s = machine.state()
       const list = sorted(s.collection)
@@ -186,10 +151,7 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       grid.replaceChildren(...list.map(([id, e]) => {
         const tile = h('button', { type: 'button', class: 'phg-tile', title: `Play ${e.title}, without a modifier` })
         setTier(tile, e.best)
-        tile.addEventListener('click', () => {
-          void machine.replay(id)
-          ctx.ui.showStage('player')
-        })
+        tile.addEventListener('click', () => playAgain(id))
         tile.append(thumb(machine, id, e.best, io), h('div', { class: 'phg-tile-body' },
           h('span', { class: 'phg-tile-title', text: e.title }),
           h('div', { class: 'phg-tile-meta' }, h('span', { text: stars(e.best) }), h('span', { text: `×${e.count}` })),
@@ -205,24 +167,6 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       renderResult()
     }
 
-    async function animate(p: Plan) {
-      stageTier(stage, p.tier)
-      drop.replaceChildren(svg(capsule(TIER_INFO[p.tier].colour, 56)))
-      skipper = skippable()
-      const { sleep } = skipper
-      stage.dataset.phase = 'crank'
-      await sleep(650)
-      stage.dataset.phase = 'drop'
-      await sleep(520)
-      stage.dataset.phase = 'wobble'
-      // The rarer, the longer the suspense.
-      await sleep(p.tier === 'legendary' ? 1100 : p.tier === 'epic' ? 750 : 450)
-      stage.dataset.phase = 'open'
-      await sleep(320)
-      stage.dataset.phase = 'done'
-      skipper = null
-    }
-
     async function pull() {
       if (busy)
         return
@@ -234,8 +178,8 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
         if (!p || !alive)
           return
         const c = cfg()
-        if (c.animation && !reducedMotion())
-          await animate(p)
+        if (view.wanted(c))
+          await view.animate(p.tier)
         if (!alive)
           return
         shown = { id: p.video.id, title: p.video.title, tier: p.tier, modifier: p.modifier, guaranteed: p.guaranteed, isNew: p.isNew, reasons: reasons(p.score) }
@@ -249,6 +193,7 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
           }, TO_PLAYER_MS)
         renderMachine()
         renderResult(true)
+        renderRecent()
         renderCollection()
       }
       finally {
@@ -271,6 +216,7 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       const at = machine.state().last?.at ?? 0
       renderMachine()
       renderResult(at !== lastAt)
+      renderRecent()
       renderCollection()
       lastAt = at
     })
@@ -293,12 +239,13 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
 
     renderMachine()
     renderResult()
+    renderRecent()
     renderCollection()
     refreshPool()
 
     return () => {
       alive = false
-      skipper?.skip()
+      view.skip()
       clearTimeout(goTimer)
       clearInterval(countdown)
       io.disconnect()

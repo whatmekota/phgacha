@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { emptyState, readState, record, sorted, tally } from '../src/collection.ts'
+import { ago, emptyState, HISTORY_MAX, pushHistory, readState, record, sorted, tally } from '../src/collection.ts'
 
 const pull = (id: string, tier: 'common' | 'rare' | 'epic' | 'legendary', at: number) =>
   ({ id, title: id, tier, modifier: null, guaranteed: false, at })
@@ -34,5 +34,27 @@ describe('collection', () => {
     assert.deepEqual(Object.keys(junk.collection), ['c'])
     assert.equal(junk.collection.c.count, 1)
     assert.deepEqual(readState(undefined), emptyState())
+  })
+
+  it('keeps the last 10 pulls, newest first', () => {
+    let s = emptyState()
+    for (let i = 1; i <= 12; i++)
+      s = record(s, pull(`v${i}`, 'rare', i), 0)
+    assert.equal(s.history.length, HISTORY_MAX)
+    assert.deepEqual(s.history.map(x => x.id).slice(0, 3), ['v12', 'v11', 'v10'])
+    assert.equal(s.history.at(-1)!.id, 'v3')
+    assert.deepEqual(pushHistory([], s.history[0], 1), [s.history[0]])
+    // Saved by 0.1.0, before the timeline: it starts empty.
+    assert.deepEqual(readState({ pulls: 2, collection: {} }).history, [])
+    assert.equal(readState(JSON.parse(JSON.stringify(s))).history.length, HISTORY_MAX)
+  })
+
+  it('says how long ago', () => {
+    const now = 10_000_000_000
+    assert.equal(ago(now - 10_000, now), 'just now')
+    assert.equal(ago(now - 120_000, now), '2 min ago')
+    assert.equal(ago(now - 3 * 3_600_000, now), '3 h ago')
+    assert.equal(ago(now - 26 * 3_600_000, now), 'yesterday')
+    assert.equal(ago(now - 5 * 86_400_000, now), '5 days ago')
   })
 })

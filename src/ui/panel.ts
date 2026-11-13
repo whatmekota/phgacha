@@ -2,23 +2,31 @@ import type { Machine, Plan } from '../machine'
 import type { Config } from '../settings'
 import type { PluginContext } from '../types'
 import { sameVideo } from '../machine'
-import { pityDue } from '../pick'
 import { TIER_INFO } from '../rarity'
 import { stars } from './art'
 import { setTier, thumb } from './card'
 import { h } from './dom'
+import { machineView, pityMeter } from './machineView'
+import { timeline } from './timeline'
+
+/** The panel's timeline is shorter than the page's. */
+const PANEL_HISTORY = 5
 
 /**
- * The small panel: a Pull button, the pity count, the last pull and the
- * modifier that is on. No big animation here: it pulls and plays at once.
+ * The panel: a small machine with the Pull button and the pity meter, the
+ * last pull, the modifier that is on, and the last few pulls. A pull here
+ * plays at once and stays where you are; the machine animates meanwhile.
  */
 export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Config, pullNow: () => Promise<Plan | null>) {
   return (el: HTMLElement) => {
     const root = h('div', { class: 'phg phg-panel' })
     el.append(root)
+    let alive = true
     let busy = false
     let reveal = false
 
+    const view = machineView({ compact: true })
+    const pity = pityMeter()
     const pullBtn = h('button', {
       type: 'button',
       class: 'phg-pull',
@@ -27,29 +35,29 @@ export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Conf
           return
         busy = true
         pullBtn.disabled = true
-        pullBtn.classList.add('phg-busy')
         try {
-          reveal = !!await pullNow()
-          render()
+          // The video starts now; the capsule opens while it loads.
+          const p = await pullNow()
+          if (p && view.wanted(cfg()))
+            await view.animate(p.tier)
+          reveal = !!p
         }
         finally {
           busy = false
           pullBtn.disabled = false
-          pullBtn.classList.remove('phg-busy')
+          if (alive)
+            render()
         }
       },
     }, 'Pull')
-    const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } })
-    root.append(pullBtn, body)
+    root.append(h('div', { class: 'phg-panel-top' }, view.el, h('div', { class: 'phg-panel-side' }, pullBtn, pity.el)))
+    const body = h('div', { class: 'phg-panel-body' })
+    root.append(body)
 
     function render() {
       const s = machine.state()
-      const c = cfg()
-      const due = pityDue(s.pity, c.pityAt)
-      pullBtn.toggleAttribute('data-due', due)
-      const kids: HTMLElement[] = [
-        h('p', { class: 'phg-faint', text: due ? 'Next pull: Epic or better, guaranteed.' : `Epic or better guaranteed in ${c.pityAt - s.pity} ${c.pityAt - s.pity === 1 ? 'pull' : 'pulls'}.` }),
-      ]
+      pullBtn.toggleAttribute('data-due', pity.render(s, cfg()))
+      const kids: HTMLElement[] = []
       const last = s.last
       if (last) {
         const mini = h('div', { class: `phg-mini${reveal ? ' phg-reveal' : ''}` })
@@ -74,22 +82,34 @@ export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Conf
         )
         kids.push(live)
       }
+      // The last pull is the card above; the strip shows the ones before it too.
+      const recent = s.history.slice(0, PANEL_HISTORY)
+      if (recent.length > 1) {
+        kids.push(h('div', { class: 'phg-sub', text: 'Last pulls' }))
+        kids.push(timeline(machine, recent, id => void machine.replay(id)))
+      }
       kids.push(h('button', { type: 'button', class: 'phg-link', style: { alignSelf: 'flex-start' }, onclick: () => ctx.ui.openPage() }, 'Open the machine and the collection'))
       body.replaceChildren(...kids)
     }
 
     const countdown = setInterval(() => {
-      if (machine.active()?.breakUntil != null)
+      if (!busy && machine.active()?.breakUntil != null)
         render()
     }, 500)
+    // While the panel's own capsule is opening, its reveal renders the result.
     const off = machine.subscribe(() => {
       if (!busy)
         render()
     })
-    const offSettings = ctx.settings.onChange(render)
+    const offSettings = ctx.settings.onChange(() => {
+      if (!busy)
+        render()
+    })
     render()
 
     return () => {
+      alive = false
+      view.skip()
       clearInterval(countdown)
       off()
       offSettings()

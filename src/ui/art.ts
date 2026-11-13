@@ -33,17 +33,20 @@ function pileCapsule([x, y, r, tier]: [number, number, number, Tier]): string {
  * with a crank and a chute. The crank and the pile have classes the pull
  * animation moves.
  */
+let machines = 0
 export function machine(): string {
+  // Its own ids: the page and the panel can both show a machine at once.
+  const n = ++machines
   return `<svg class="phg-machine-svg" viewBox="0 0 200 280" aria-hidden="true">
   <defs>
-    <radialGradient id="phg-glass" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#fff" stop-opacity=".14"/></radialGradient>
-    <clipPath id="phg-globe-clip"><circle cx="100" cy="90" r="70"/></clipPath>
+    <radialGradient id="phg-glass-${n}" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#fff" stop-opacity=".14"/></radialGradient>
+    <clipPath id="phg-globe-clip-${n}"><circle cx="100" cy="90" r="70"/></clipPath>
   </defs>
   <rect x="62" y="16" width="76" height="10" rx="5" class="phg-m-cap"/>
   <circle cx="100" cy="90" r="72" class="phg-m-rim"/>
   <circle cx="100" cy="90" r="70" class="phg-m-back"/>
-  <g clip-path="url(#phg-globe-clip)"><g class="phg-pile">${PILE.map(pileCapsule).join('')}</g></g>
-  <circle cx="100" cy="90" r="70" fill="url(#phg-glass)"/>
+  <g clip-path="url(#phg-globe-clip-${n})"><g class="phg-pile">${PILE.map(pileCapsule).join('')}</g></g>
+  <circle cx="100" cy="90" r="70" fill="url(#phg-glass-${n})"/>
   <path d="M52 62 C60 44 76 33 96 30" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity=".35"/>
   <path d="M146 112 C142 122 136 130 128 136" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".2"/>
   <path d="M58 150 H142 L150 166 H50 Z" class="phg-m-neck"/>

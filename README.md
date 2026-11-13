@@ -21,7 +21,7 @@ It asks for six permissions:
 
 - **Gacha** in the left nav opens the machine. Press **Pull**: the crank turns, a capsule in the rarity's colour drops and opens, and the card shows what you got. The video starts, and a moment later you're on the player (a setting; **Stay here** cancels it). Click the machine to skip the animation.
 - **Shift+P** anywhere pulls at once with a toast instead of the animation (or Alt+P, or Alt+Shift+P, whichever is free; the page says which). Also **Pull from the gacha** in the command palette (Ctrl K).
-- The **Gacha** panel on the right rail has a Pull button, the last pull and the modifier that is on.
+- The **Gacha** panel on the right rail has a smaller machine with the same animation, the pity meter, the last pull, the modifier that is on and the last 5 pulls. A pull there plays at once and keeps you where you are.
 
 ## Rarity
 
@@ -49,9 +49,11 @@ Each pull may roll one. The chance is set for a Rare (40% by default); a Common 
 
 A modifier ends when the video changes or ends, on panic, with **End it** (the page and the panel), or **End the gacha modifier** in the command palette. Ending takes the stroke filter off and puts your speed back, unless you changed the speed yourself meanwhile; then yours stands. A break is never resumed after a panic.
 
-## Collection
+## Last pulls and the collection
 
-The page lists every video you've pulled, rarest first, with how often. A card's colour is the rarest it has come up as. Click one to play it as it is, without a modifier. **Reset the collection** (at the bottom, two clicks) forgets every pull and the pity count.
+**Last pulls** on the page is a strip of the last 10 pulls, newest first: the thumbnail edged in its rarity's colour, the modifier as a tag, and when in the tooltip. Click one to play it again, without a modifier.
+
+The **collection** lists every video you've pulled, rarest first, with how often. A card's colour is the rarest it has come up as. Click one to play it as it is, without a modifier. **Reset the collection** (at the bottom, two clicks) forgets every pull and the pity count.
 
 ## Settings
 

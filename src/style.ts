@@ -133,10 +133,35 @@ export const CSS = `
 .phg-tile-meta span:last-child { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .phg-foot { display: flex; justify-content: flex-end; }
 
+/* The compact machine (the panel's): the same drawing, the capsule and its light scaled to it. */
+.phg-stage.phg-compact { width: 116px; flex: none; }
+.phg-compact .phg-drop { width: 34px; height: 34px; margin: -17px 0 0 -17px; }
+.phg-compact .phg-burst { width: 190px; height: 190px; margin: -95px 0 0 -95px; }
+.phg-compact .phg-skip { bottom: -15px; font-size: 10px; }
+.phg-compact .phg-machine-svg { filter: drop-shadow(0 6px 10px rgb(0 0 0 / .25)); }
+
+/* ─── The last pulls ─── */
+.phg-recent { max-width: 980px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.phg-recent[hidden] { display: none; }
+.phg-timeline { display: flex; gap: 10px; overflow-x: auto; padding: 6px 4px 8px; scrollbar-width: thin; }
+.phg-tl-item { flex: none; width: 120px; padding: 0; border-radius: 8px; border: 2px solid var(--phg-tier); background: var(--bg-900); overflow: hidden; cursor: pointer; box-shadow: 0 0 10px color-mix(in srgb, var(--phg-tier) 35%, transparent); transition: transform var(--dur-fast, 120ms) ease, box-shadow var(--dur-fast, 120ms) ease; }
+.phg-tl-item:hover { transform: translateY(-2px); box-shadow: 0 0 16px color-mix(in srgb, var(--phg-tier) 60%, transparent); }
+.phg-tl-item:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.phg-tl-item[data-tier=legendary] { box-shadow: 0 0 14px color-mix(in srgb, var(--phg-tier) 65%, transparent); }
+.phg-tl-item:first-child { width: 140px; }
+.phg-tl-tag { position: absolute; right: 4px; bottom: 4px; padding: 0 5px; border-radius: 99px; font-size: 9.5px; font-weight: 700; line-height: 15px; color: #fff; background: color-mix(in srgb, var(--phg-tier) 55%, rgb(0 0 0 / .75)); }
+.phg-panel .phg-timeline { gap: 7px; padding: 4px 2px 6px; }
+.phg-panel .phg-tl-item, .phg-panel .phg-tl-item:first-child { width: 64px; border-radius: 6px; }
+.phg-panel .phg-tl-tag { right: 2px; bottom: 2px; font-size: 8.5px; line-height: 13px; padding: 0 4px; }
+
 /* ─── The panel ─── */
 .phg-panel { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; }
-.phg-panel .phg-pull { align-self: stretch; height: 38px; font-size: 13.5px; }
-.phg-panel .phg-pull.phg-busy { animation: phg-shake .5s ease-in-out; }
+.phg-panel-top { display: flex; align-items: center; gap: 14px; padding-bottom: 6px; }
+.phg-panel-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.phg-panel-side .phg-pity { width: auto; }
+.phg-panel-body { display: flex; flex-direction: column; gap: 10px; }
+.phg-panel .phg-pull { align-self: stretch; min-width: 0; height: 38px; padding: 0 12px; font-size: 13.5px; }
+.phg-sub { margin-bottom: -6px; color: var(--text-faint); font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .phg-mini { display: flex; gap: 9px; align-items: center; padding: 7px; border-radius: var(--radius-md, 10px); background: var(--bg-850); border: 1px solid color-mix(in srgb, var(--phg-tier) 55%, transparent); }
 .phg-mini.phg-reveal { animation: phg-pop .4s cubic-bezier(.2, .9, .3, 1.4); }
 @keyframes phg-pop { 0% { transform: scale(.9); opacity: .3; } 100% { transform: none; opacity: 1; } }
@@ -154,7 +179,7 @@ export const CSS = `
 .phg-badge b { font-variant-numeric: tabular-nums; color: var(--phg-tier); }
 
 @media (prefers-reduced-motion: reduce) {
-  .phg-card.phg-reveal, .phg-mini.phg-reveal, .phg-card[data-tier=legendary]::after, .phg-live-dot, .phg-panel .phg-pull.phg-busy { animation: none; }
-  .phg-tile, .phg-badge { transition: none; }
+  .phg-card.phg-reveal, .phg-mini.phg-reveal, .phg-card[data-tier=legendary]::after, .phg-live-dot { animation: none; }
+  .phg-tile, .phg-badge, .phg-tl-item { transition: none; }
 }
 `
