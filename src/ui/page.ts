@@ -1,14 +1,17 @@
 import type { Machine } from '../machine'
 import type { Config } from '../settings'
+import type { Fanfare } from '../index'
 import type { PluginContext } from '../types'
 import type { CardData } from './card'
 import { sorted, tally } from '../collection'
 import { sameVideo } from '../machine'
 import { ODDS } from '../pick'
 import { reasons, TIER_INFO, TIERS } from '../rarity'
+import { holdFor } from '../reveal'
 import { capsule, stars } from './art'
 import { lazyThumbs, resultCard, setTier, thumb } from './card'
-import { h, svg } from './dom'
+import { h, reducedMotion, svg } from './dom'
+import { celebrate } from './fx'
 import { machineView, pityMeter } from './machineView'
 import { timeline } from './timeline'
 
@@ -19,10 +22,13 @@ const TO_PLAYER_MS = 2200
  * The machine's page: the gacha machine with its Pull button and pity
  * meter, the last pull's card, the last pulls, and the collection.
  */
-export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Config, pullKey: () => string | null) {
+export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Config, fanfare: Fanfare, pullKey: () => string | null) {
   return (el: HTMLElement) => {
     const root = h('div', { class: 'phg phg-page' })
-    el.append(root)
+    // The host holds the page and, over it, an Epic's or a Legendary's moment.
+    const host = h('div', { class: 'phg phg-host' }, root)
+    el.append(host)
+    let fx: ReturnType<typeof celebrate> | null = null
     let alive = true
     let busy = false
     /** The card for a pull made while the page is up, with its reasons; else the saved last pull. */
@@ -43,7 +49,8 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       s.style.setProperty('--phg-tier', TIER_INFO[t].colour)
       return s
     }))
-    const left = h('div', { class: 'phg-left' }, view.el, pullBtn, keyHint, pity.el, odds)
+    const streak = h('p', { class: 'phg-streak' })
+    const left = h('div', { class: 'phg-left' }, view.el, pullBtn, keyHint, pity.el, streak, odds)
 
     // ─── The result ───
     const right = h('div', { class: 'phg-right' })
@@ -77,7 +84,14 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     const io = lazyThumbs(root)
 
     function renderMachine() {
-      pullBtn.toggleAttribute('data-due', pity.render(machine.state(), cfg()))
+      const s = machine.state()
+      pullBtn.toggleAttribute('data-due', pity.render(s, cfg()))
+      const n = s.sinceLegendary
+      streak.replaceChildren(...(s.legendaries === 0
+        ? [s.pulls ? `No Legendary yet, ${s.pulls} ${s.pulls === 1 ? 'pull' : 'pulls'} in` : '']
+        : n === 0
+          ? [h('b', { text: 'Legendary' }), ' on the last pull!']
+          : ['Last Legendary ', h('b', { text: String(n) }), ` ${n === 1 ? 'pull' : 'pulls'} ago · ${s.legendaries} in all`]))
       const key = pullKey()
       keyHint.replaceChildren(...(key ? ['Or ', h('span', { class: 'phg-kbd', text: key }), ' anywhere in playhound'] : ['Or "Pull from the gacha" in the command palette (Ctrl K)']))
     }
@@ -179,12 +193,23 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
           return
         const c = cfg()
         if (view.wanted(c))
-          await view.animate(p.tier)
+          await view.animate(p.tier, { onUpgrade: () => fanfare.sound.upgrade(), onOpen: () => fanfare.sound.stinger(p.tier) })
+        else
+          fanfare.sound.stinger(p.tier)
         if (!alive)
           return
+        // The video loads while the moment holds.
+        void machine.launch(p)
+        if (c.animation) {
+          fx = celebrate(host, root, p.tier, { compact: false, motion: !reducedMotion(), holdMs: holdFor(p.tier) })
+          await fx.done
+          fx = null
+          if (!alive)
+            return
+        }
         shown = { id: p.video.id, title: p.video.title, tier: p.tier, modifier: p.modifier, guaranteed: p.guaranteed, isNew: p.isNew, reasons: reasons(p.score) }
         lastAt = machine.state().last?.at ?? 0
-        void machine.launch(p)
+        fanfare.revealed(p)
         if (c.toPlayer)
           goTimer = setTimeout(() => {
             goTimer = undefined
@@ -246,6 +271,7 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     return () => {
       alive = false
       view.skip()
+      fx?.skip()
       clearTimeout(goTimer)
       clearInterval(countdown)
       io.disconnect()
@@ -253,7 +279,7 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       offPlayer()
       offLib()
       offSettings()
-      root.remove()
+      host.remove()
     }
   }
 }

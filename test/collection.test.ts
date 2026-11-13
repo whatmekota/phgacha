@@ -58,3 +58,18 @@ describe('collection', () => {
     assert.equal(ago(now - 5 * 86_400_000, now), '5 days ago')
   })
 })
+
+describe('legendary streak', () => {
+  it('counts pulls since the last Legendary, and Legendaries in all', () => {
+    let s = emptyState()
+    for (const tier of ['rare', 'common', 'legendary', 'rare', 'epic'] as const)
+      s = record(s, { id: tier, title: tier, tier, modifier: null, guaranteed: false, at: 1 }, 0)
+    assert.equal(s.legendaries, 1)
+    assert.equal(s.sinceLegendary, 2)
+    // A 0.2.0 save: found in the timeline.
+    const old = JSON.parse(JSON.stringify(s))
+    delete old.legendaries
+    delete old.sinceLegendary
+    assert.deepEqual([readState(old).legendaries, readState(old).sinceLegendary], [1, 2])
+  })
+})

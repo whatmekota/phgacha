@@ -17,6 +17,8 @@ export interface Plan {
   modifier: ModifierId | null
   guaranteed: boolean
   isNew: boolean
+  /** The first Legendary ever pulled. */
+  firstLegendary: boolean
   /** Why it's that rare ("intense", "never played"…). */
   score: ReturnType<typeof scoreOf>
 }
@@ -116,10 +118,11 @@ export async function createMachine(ctx: PluginContext, cfg: () => Config) {
       allowed: c.allowed,
       situation: { device: readout.device, hasScript: p.video.hasScript, durationS: p.video.durationS, finaleS: c.finaleS },
     })
+    const firstLegendary = p.tier === 'legendary' && state.legendaries === 0
     state = record(state, { id: p.video.id, title: p.video.title, tier: p.tier, modifier, guaranteed: p.guaranteed, at: now }, pityAfter(state.pity, p.tier))
     await ctx.storage.set(STORAGE_KEY, state).catch(err => ctx.log('saving failed', err))
     changed()
-    return { video: p.video, tier: p.tier, modifier, guaranteed: p.guaranteed, isNew: state.last!.isNew, score: scoreOf(p.video, now) }
+    return { video: p.video, tier: p.tier, modifier, guaranteed: p.guaranteed, isNew: state.last!.isNew, firstLegendary, score: scoreOf(p.video, now) }
   }
 
   /** Resolves true once `id` is loaded and its length known; false on a timeout, or if something else loads. */

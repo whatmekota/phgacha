@@ -36,6 +36,8 @@ Each video's rarity comes from what playhound knows about it. Points:
 
 0–1 points is **Common**, 2–3 **Rare**, 4 **Epic**, 5–6 **Legendary**. A pull rolls the tier first (Common 55%, Rare 30%, Epic 12%, Legendary 3%), then a video of that tier. If the library has none of that tier, the nearest tier that has some stands in.
 
+**The reveal** gets grander the rarer the pull. The capsule glows its tier on the way out, sometimes starting lower and flashing up a tier (never higher than it is: gold always means Legendary), and an Epic or Legendary cranks, drops and wobbles longer. A Legendary then dims the page, bursts gold light, showers confetti, shakes and holds a big LEGENDARY title; an Epic gets a smaller purple version. Each tier has its own short sound (a blip, a chime, an arpeggio, a fanfare). Legendary cards have a turning gold foil edge, and your first Legendary gets a toast. Under the pity meter, the page and the panel say how many pulls ago the last Legendary was.
+
 **Pity**: after 10 pulls in a row without an Epic or better (a setting), the next one is guaranteed to be.
 
 ## Modifiers
@@ -57,7 +59,7 @@ The **collection** lists every video you've pulled, rarest first, with how often
 
 ## Settings
 
-In **Settings → Plugins → Gacha**: the pool (only videos with a script, on by default; only starred; tags to include and exclude), the modifier chance, each modifier on or off, the finale and break lengths, the pity, the pull animation, going to the player after a pull, and the label over the video.
+In **Settings → Plugins → Gacha**: the pool (only videos with a script, on by default; only starred; tags to include and exclude), the modifier chance, each modifier on or off, the finale and break lengths, the pity, the pull animation, sounds and their volume, going to the player after a pull, and the label over the video.
 
 ## Privacy
 

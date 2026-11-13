@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+Rarer pulls feel rarer.
+
+- **Tells**: the globe and the capsule glow in the tier's colour on the way out, and an Epic or Legendary takes longer to crank, drop and wobble, the wobble building. Sometimes it lies low: an Epic can come out blue and flash purple, a Legendary blue or purple and flash gold. It never glows above what it is, so gold always means Legendary.
+- **The moment**: a Legendary dims the page, bursts gold light and rays, showers gold confetti, shakes, and holds a big LEGENDARY title for about 2.5 s; an Epic gets a smaller purple version. Click to skip. Common and Rare stay quick. The panel gets a scaled version over the drawer, and its video still starts at once.
+- **Sounds**, made with Web Audio: a blip, a chime, a rising arpeggio, a fanfare with a shimmer, and a short rising tick when the glow steps up. Settings: Sounds on or off, and the volume (40%).
+- **Foil**: a Legendary's card, collection card and timeline item have a turning gold edge; an Epic's card glows. A toast for your first Legendary.
+- **Legendary streak**: "Last Legendary N pulls ago" under the pity meter, on the page and in the panel.
+- With reduced motion an Epic or Legendary still gets its title card, without the movement; sounds still play.
+
 ## 0.2.0
 
 - The **panel has the machine too**, smaller, with the same pull animation (the capsule, its wobble, the burst), skippable by a click. A pull there still plays at once and stays where you are; the capsule opens while the video starts.

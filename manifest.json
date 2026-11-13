@@ -1,7 +1,7 @@
 {
   "id": "phgacha",
   "name": "Gacha",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A gacha machine for your library: pull for the next video, by rarity, with a random modifier on top.",
   "icon": "icon.svg",
   "author": "whatmekota",

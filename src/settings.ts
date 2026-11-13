@@ -19,6 +19,9 @@ export interface Config {
   toPlayer: boolean
   /** The small label over the video while a modifier is on. */
   badge: boolean
+  sounds: boolean
+  /** 0–1. */
+  volume: number
 }
 
 const modKey = (id: ModifierId) => `mod_${id}`
@@ -39,7 +42,9 @@ export const FIELDS: SettingField[] = [
 
   { type: 'heading', label: 'Machine' },
   { key: 'pityAt', type: 'slider', label: 'Pity', hint: 'After this many pulls in a row without an Epic or better, the next one is guaranteed to be.', min: 3, max: 30, step: 1, unit: ' pulls', default: 10 },
-  { key: 'animation', type: 'switch', label: 'Pull animation', hint: 'The crank, the capsule and the reveal on the machine\'s page. Off, or with reduced motion, the card shows at once.', default: true },
+  { key: 'animation', type: 'switch', label: 'Pull animation', hint: 'The crank, the capsule and the reveal, grander the rarer the pull. Off, the card shows at once. With reduced motion, an Epic or Legendary still gets its title card, without the movement.', default: true },
+  { key: 'sounds', type: 'switch', label: 'Sounds', hint: 'A short sound on each reveal, grander the rarer: a blip, a chime, an arpeggio, a fanfare.', default: true },
+  { key: 'volume', type: 'slider', label: 'Volume', min: 5, max: 100, step: 5, unit: '%', default: 40, when: v => v.sounds !== false },
   { key: 'toPlayer', type: 'switch', label: 'Go to the player after a pull', hint: 'From the machine\'s page, a moment after the reveal.', default: true },
   { key: 'badge', type: 'switch', label: 'Show the modifier over the video', hint: 'A small label at the top for a few seconds, and the countdown during a break.', default: true },
 ]
@@ -65,5 +70,7 @@ export function readConfig(v: Record<string, unknown>): Config {
     animation: v.animation !== false,
     toPlayer: v.toPlayer !== false,
     badge: v.badge !== false,
+    sounds: v.sounds !== false,
+    volume: num(v.volume, 40, 0, 100) / 100,
   }
 }

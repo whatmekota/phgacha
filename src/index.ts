@@ -1,5 +1,6 @@
 import type { Plan } from './machine'
 import type { PluginContext } from './types'
+import type { Sound } from './ui/sound'
 import { createMachine } from './machine'
 import { modifierDef } from './modifiers'
 import { TIER_INFO } from './rarity'
@@ -9,6 +10,7 @@ import { stars } from './ui/art'
 import { mountBadge } from './ui/badge'
 import { mountPage } from './ui/page'
 import { mountPanel } from './ui/panel'
+import { createSound } from './ui/sound'
 
 /**
  * Gacha: a gacha machine for the library. A pull picks the next video by
@@ -27,6 +29,12 @@ const PULL_KEYS = ['Shift+P', 'Alt+P', 'Alt+Shift+P']
 const ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4"/><path d="M1.8 8a6.2 6.2 0 0 1 12.4 0" fill="currentColor" fill-opacity=".35"/></svg>'
 const END_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg>'
 
+/** The reveal's shared parts, for the page and the panel. */
+export interface Fanfare {
+  sound: Sound
+  revealed: (p: Plan) => void
+}
+
 export default async function activate(ctx: PluginContext) {
   ctx.ui.style(CSS)
   let values = ctx.settings.all()
@@ -36,6 +44,15 @@ export default async function activate(ctx: PluginContext) {
   })
 
   const machine = await createMachine(ctx, cfg)
+  const sound = createSound(() => ({ on: cfg().sounds, volume: cfg().volume }))
+  /** What every reveal shares: its sound, and a toast for the first Legendary ever. */
+  const fanfare: Fanfare = {
+    sound,
+    revealed(p: Plan) {
+      if (p.firstLegendary)
+        ctx.ui.toast('Your first Legendary!', { tone: 'success', detail: `${p.video.title}: it's in your collection, in gold.` })
+    },
+  }
 
   /** Pull and play at once: the command and the panel. The page animates first instead. */
   async function pullNow(): Promise<Plan | null> {
@@ -58,10 +75,12 @@ export default async function activate(ctx: PluginContext) {
       const p = await pullNow()
       if (!p)
         return
+      sound.stinger(p.tier)
       const m = p.modifier && modifierDef(p.modifier)
       ctx.ui.toast(`${stars(p.tier)} ${TIER_INFO[p.tier].name}${p.isNew ? ' · new' : ''}: ${p.video.title}`, {
         detail: m ? `${m.name}: ${m.hint.toLowerCase()}.` : 'No modifier.',
       })
+      fanfare.revealed(p)
     },
   })
   ctx.commands.register({
@@ -81,9 +100,12 @@ export default async function activate(ctx: PluginContext) {
   ctx.commands.register({ id: 'open', title: 'Open the gacha machine', hint: 'The machine and your collection', icon: ICON, run: () => ctx.ui.openPage() })
 
   ctx.ui.settings(FIELDS)
-  ctx.ui.page({ title: 'Gacha', icon: ICON, mount: mountPage(ctx, machine, cfg, () => pullKey) })
-  ctx.ui.panel({ title: 'Gacha', icon: ICON, mount: mountPanel(ctx, machine, cfg, pullNow) })
+  ctx.ui.page({ title: 'Gacha', icon: ICON, mount: mountPage(ctx, machine, cfg, fanfare, () => pullKey) })
+  ctx.ui.panel({ title: 'Gacha', icon: ICON, mount: mountPanel(ctx, machine, cfg, fanfare, pullNow) })
   ctx.ui.overlay({ mount: mountBadge(machine, cfg) })
 
-  return () => machine.dispose()
+  return () => {
+    machine.dispose()
+    sound.dispose()
+  }
 }

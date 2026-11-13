@@ -1,11 +1,14 @@
 import type { Machine, Plan } from '../machine'
 import type { Config } from '../settings'
+import type { Fanfare } from '../index'
 import type { PluginContext } from '../types'
 import { sameVideo } from '../machine'
 import { TIER_INFO } from '../rarity'
+import { holdFor } from '../reveal'
 import { stars } from './art'
 import { setTier, thumb } from './card'
-import { h } from './dom'
+import { h, reducedMotion } from './dom'
+import { celebrate } from './fx'
 import { machineView, pityMeter } from './machineView'
 import { timeline } from './timeline'
 
@@ -17,10 +20,13 @@ const PANEL_HISTORY = 5
  * last pull, the modifier that is on, and the last few pulls. A pull here
  * plays at once and stays where you are; the machine animates meanwhile.
  */
-export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Config, pullNow: () => Promise<Plan | null>) {
+export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Config, fanfare: Fanfare, pullNow: () => Promise<Plan | null>) {
   return (el: HTMLElement) => {
     const root = h('div', { class: 'phg phg-panel' })
-    el.append(root)
+    // The drawer's own, smaller moment for an Epic or a Legendary goes over this.
+    const host = h('div', { class: 'phg phg-host phg-panel-host' }, root)
+    el.append(host)
+    let fx: ReturnType<typeof celebrate> | null = null
     let alive = true
     let busy = false
     let reveal = false
@@ -38,8 +44,19 @@ export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Conf
         try {
           // The video starts now; the capsule opens while it loads.
           const p = await pullNow()
-          if (p && view.wanted(cfg()))
-            await view.animate(p.tier)
+          if (p) {
+            const c = cfg()
+            if (view.wanted(c))
+              await view.animate(p.tier, { onUpgrade: () => fanfare.sound.upgrade(), onOpen: () => fanfare.sound.stinger(p.tier) })
+            else
+              fanfare.sound.stinger(p.tier)
+            if (c.animation && alive) {
+              fx = celebrate(host, root, p.tier, { compact: true, motion: !reducedMotion(), holdMs: holdFor(p.tier, true) })
+              await fx.done
+              fx = null
+            }
+            fanfare.revealed(p)
+          }
           reveal = !!p
         }
         finally {
@@ -50,13 +67,15 @@ export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Conf
         }
       },
     }, 'Pull')
-    root.append(h('div', { class: 'phg-panel-top' }, view.el, h('div', { class: 'phg-panel-side' }, pullBtn, pity.el)))
+    const streak = h('p', { class: 'phg-streak', style: { textAlign: 'left' } })
+    root.append(h('div', { class: 'phg-panel-top' }, view.el, h('div', { class: 'phg-panel-side' }, pullBtn, pity.el, streak)))
     const body = h('div', { class: 'phg-panel-body' })
     root.append(body)
 
     function render() {
       const s = machine.state()
       pullBtn.toggleAttribute('data-due', pity.render(s, cfg()))
+      streak.textContent = s.legendaries ? (s.sinceLegendary ? `Last Legendary ${s.sinceLegendary} ${s.sinceLegendary === 1 ? 'pull' : 'pulls'} ago` : 'Legendary on the last pull!') : ''
       const kids: HTMLElement[] = []
       const last = s.last
       if (last) {
@@ -110,10 +129,11 @@ export function mountPanel(ctx: PluginContext, machine: Machine, cfg: () => Conf
     return () => {
       alive = false
       view.skip()
+      fx?.skip()
       clearInterval(countdown)
       off()
       offSettings()
-      root.remove()
+      host.remove()
     }
   }
 }

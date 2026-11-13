@@ -43,13 +43,17 @@ export interface MachineState {
   collection: Record<string, Entry>
   /** The last pulls, newest first, at most HISTORY_MAX. */
   history: HistoryItem[]
+  /** Legendary pulls so far. */
+  legendaries: number
+  /** Pulls since the last Legendary (all of them if there was none). */
+  sinceLegendary: number
 }
 
 export const STORAGE_KEY = 'machine'
 /** How many pulls the timeline keeps. */
 export const HISTORY_MAX = 10
 
-export const emptyState = (): MachineState => ({ pulls: 0, pity: 0, last: null, collection: {}, history: [] })
+export const emptyState = (): MachineState => ({ pulls: 0, pity: 0, last: null, collection: {}, history: [], legendaries: 0, sinceLegendary: 0 })
 
 /** The timeline after a pull: it goes in front, the oldest falls off the end. */
 export const pushHistory = (h: HistoryItem[], item: HistoryItem, max = HISTORY_MAX): HistoryItem[] => [item, ...h].slice(0, max)
@@ -92,6 +96,13 @@ export function readState(raw: unknown): MachineState {
         s.history.push({ id: it.id, title: typeof it.title === 'string' ? it.title : it.id, tier: it.tier, modifier: isModifier(it.modifier) ? it.modifier : null, at: count(it.at) })
     }
   }
+  // Saved before 0.3.0 counted them: what the collection and the timeline say.
+  const seen = Object.values(s.collection).filter(e => e.best === 'legendary').length
+  s.legendaries = typeof r.legendaries === 'number' ? count(r.legendaries) : seen
+  const inHistory = s.history.findIndex(it => it.tier === 'legendary')
+  s.sinceLegendary = typeof r.sinceLegendary === 'number'
+    ? count(r.sinceLegendary)
+    : inHistory >= 0 ? inHistory : seen ? s.history.length : s.pulls
   return s
 }
 
@@ -107,6 +118,8 @@ export function record(s: MachineState, pull: Omit<LastPull, 'isNew'>, pityAfter
     last: { ...pull, isNew: !had },
     collection: { ...s.collection, [pull.id]: entry },
     history: pushHistory(s.history, { id: pull.id, title: pull.title, tier: pull.tier, modifier: pull.modifier, at: pull.at }),
+    legendaries: s.legendaries + (pull.tier === 'legendary' ? 1 : 0),
+    sinceLegendary: pull.tier === 'legendary' ? 0 : s.sinceLegendary + 1,
   }
 }
 
