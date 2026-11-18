@@ -1,11 +1,12 @@
 {
   "name": "phgacha",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --import tsx --test test/rarity.test.ts test/pick.test.ts test/modifiers.test.ts test/strokes.test.ts test/collection.test.ts test/runner.test.ts test/reveal.test.ts",
+    "build:public": "node build.mjs --public --minify",
+    "test": "node --import tsx --test test/rarity.test.ts test/pick.test.ts test/modifiers.test.ts test/strokes.test.ts test/collection.test.ts test/runner.test.ts test/reveal.test.ts test/picture.test.ts test/banner.test.ts test/ten.test.ts test/achievements.test.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {

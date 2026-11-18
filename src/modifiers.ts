@@ -5,11 +5,17 @@ import type { MotionFilter } from './types'
 /**
  * Modifiers: a twist rolled with each pull. Three reshape the stroke on its
  * way to the device (motion.filter), three change the speed (player.setRate),
- * one jumps to the end, and one takes short breaks. They last until the
- * video changes or ends, or panic.
+ * one jumps to the end, one takes short breaks, and five change the picture
+ * (player.effects). They last until the video changes or ends, or panic.
  */
 
-export type ModifierId = 'invert' | 'half' | 'top' | 'slow' | 'fast' | 'turbo' | 'finale' | 'breaks'
+export type ModifierId
+  = | 'invert' | 'half' | 'top' | 'slow' | 'fast' | 'turbo' | 'finale' | 'breaks'
+    | 'mirror' | 'noir' | 'dreamy' | 'tilt' | 'pulse'
+
+/** What a modifier changes: the stroke, the speed, where it plays, breaks, or the picture. */
+export type ModifierKind = 'stroke' | 'speed' | 'finale' | 'breaks' | 'picture'
+export const MODIFIER_KINDS: readonly ModifierKind[] = ['stroke', 'speed', 'finale', 'breaks', 'picture']
 
 export interface ModifierDef {
   id: ModifierId
@@ -17,19 +23,29 @@ export interface ModifierDef {
   name: string
   /** One line saying what it does. */
   hint: string
+  kind: ModifierKind
   /** What it needs to mean anything. */
   needs: 'device' | 'script' | 'length' | null
+  /** It changes the picture: only with player.effects, and a picture to change. */
+  picture?: boolean
+  /** It moves the picture all the time: never rolled with reduced motion. */
+  moves?: boolean
 }
 
 export const MODIFIERS: ModifierDef[] = [
-  { id: 'invert', name: 'Upside down', hint: 'The strokes inverted: top is bottom', needs: 'device' },
-  { id: 'half', name: 'Half range', hint: 'Half-length strokes, around the middle', needs: 'device' },
-  { id: 'top', name: 'Top half only', hint: 'The strokes squeezed into the top half', needs: 'device' },
-  { id: 'slow', name: 'Slow motion ×0.75', hint: 'Plays at three quarters speed', needs: null },
-  { id: 'fast', name: 'Fast ×1.25', hint: 'Plays a quarter faster', needs: null },
-  { id: 'turbo', name: 'Turbo ×1.5', hint: 'Plays half again as fast', needs: null },
-  { id: 'finale', name: 'Finale only', hint: 'Straight to the last stretch', needs: 'length' },
-  { id: 'breaks', name: 'Breaks', hint: 'A short pause every few strokes', needs: 'script' },
+  { id: 'invert', name: 'Upside down', hint: 'The strokes inverted: top is bottom', kind: 'stroke', needs: 'device' },
+  { id: 'half', name: 'Half range', hint: 'Half-length strokes, around the middle', kind: 'stroke', needs: 'device' },
+  { id: 'top', name: 'Top half only', hint: 'The strokes squeezed into the top half', kind: 'stroke', needs: 'device' },
+  { id: 'slow', name: 'Slow motion ×0.75', hint: 'Plays at three quarters speed', kind: 'speed', needs: null },
+  { id: 'fast', name: 'Fast ×1.25', hint: 'Plays a quarter faster', kind: 'speed', needs: null },
+  { id: 'turbo', name: 'Turbo ×1.5', hint: 'Plays half again as fast', kind: 'speed', needs: null },
+  { id: 'finale', name: 'Finale only', hint: 'Straight to the last stretch', kind: 'finale', needs: 'length' },
+  { id: 'breaks', name: 'Breaks', hint: 'A short pause every few strokes', kind: 'breaks', needs: 'script' },
+  { id: 'mirror', name: 'Mirror', hint: 'The picture flipped left to right', kind: 'picture', needs: null, picture: true },
+  { id: 'noir', name: 'Noir', hint: 'Black and white, with more contrast', kind: 'picture', needs: null, picture: true },
+  { id: 'dreamy', name: 'Dreamy', hint: 'A little blur and a soft glow', kind: 'picture', needs: null, picture: true },
+  { id: 'tilt', name: 'Tilt', hint: 'The picture turned a few degrees, zoomed so no edge shows', kind: 'picture', needs: null, picture: true },
+  { id: 'pulse', name: 'Pulse', hint: 'The picture zooms a little with each stroke', kind: 'picture', needs: 'script', picture: true, moves: true },
 ]
 
 export const MODIFIER_IDS = MODIFIERS.map(m => m.id)
@@ -58,10 +74,25 @@ export interface Situation {
   durationS: number | null
   /** How long the finale is, seconds. */
   finaleS: number
+  /** The picture can be changed: player.effects is there and the file isn't sound alone. */
+  picture: boolean
+  /** The system asks for reduced motion. */
+  still: boolean
 }
 
-/** Whether a modifier would do anything here: a filter needs a device and a script, the finale a video well over twice its length. */
+/** Sound alone, by its extension: no picture for a picture modifier to change. */
+export const isAudio = (path: string) => /\.(?:mp3|m4a|aac|wav|flac|ogg|oga|opus|wma)$/i.test(path)
+
+/**
+ * Whether a modifier would do anything here: a filter needs a device and a
+ * script, the finale a video well over twice its length, a picture modifier
+ * a picture, and Pulse a script and no request for reduced motion.
+ */
 export function eligible(m: ModifierDef, s: Situation): boolean {
+  if (m.picture && !s.picture)
+    return false
+  if (m.moves && s.still)
+    return false
   if (m.needs === 'device')
     return s.device && s.hasScript
   if (m.needs === 'script')

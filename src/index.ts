@@ -1,10 +1,14 @@
 import type { Plan } from './machine'
-import type { PluginContext } from './types'
+import type { Tier } from './rarity'
+import type { PluginContext, PluginStatus } from './types'
 import type { Sound } from './ui/sound'
+import { createTrophies } from './achievements'
 import { createMachine } from './machine'
 import { modifierDef } from './modifiers'
-import { TIER_INFO } from './rarity'
+import { revealOrder } from './pick'
+import { TIER_INFO, TIERS } from './rarity'
 import { FIELDS, readConfig } from './settings'
+import { statusOf } from './status'
 import { CSS } from './style'
 import { stars } from './ui/art'
 import { mountBadge } from './ui/badge'
@@ -17,10 +21,13 @@ import { createSound } from './ui/sound'
  * rarity (worked out from its intensity, how long it has been left alone,
  * whether it was ever finished, and stars), plays it, and may roll a
  * modifier on top: inverted or squeezed strokes, another speed, only the
- * finale, or breaks every few strokes. Modifiers end with the video, or on
- * panic, and leave nothing behind. Every pull goes into a collection.
+ * finale, breaks every few strokes, or a changed picture. Modifiers end with
+ * the video, or on panic, and leave nothing behind. A ×10 pulls ten at once
+ * and plays them one after another. Every pull goes into a collection, and
+ * the machine has achievements of its own.
  *
- * Written for plugin API 3 (playhound 2.2).
+ * Written for plugin API 7 (playhound 2.2.8); it still runs, without the
+ * status line or the achievements, where those aren't there.
  */
 
 /** Pull's shortcut: the first of these that is free. */
@@ -28,10 +35,19 @@ const PULL_KEYS = ['Shift+P', 'Alt+P', 'Alt+Shift+P']
 /** A capsule, in currentColor. */
 const ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4"/><path d="M1.8 8a6.2 6.2 0 0 1 12.4 0" fill="currentColor" fill-opacity=".35"/></svg>'
 const END_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg>'
+/** Capsules, stacked: the ×10. */
+const TEN_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><circle cx="5.2" cy="10.4" r="3.6"/><circle cx="10.8" cy="10.4" r="3.6"/><circle cx="8" cy="5.2" r="3.6"/><path d="M4.4 5.2h7.2" opacity=".6"/></svg>'
 
 /** The reveal's shared parts, for the page and the panel. */
 export interface Fanfare {
   sound: Sound
+  /**
+   * A reveal starts: the achievements and the status line wait until the
+   * returned function is called, since they would give the pull away.
+   */
+  hold: () => () => void
+  /** A capsule's glow stepped up to `to`, seen: a sound, and a Legendary that lied low counts. */
+  upgraded: (to: Tier) => void
   revealed: (p: Plan) => void
 }
 
@@ -45,11 +61,52 @@ export default async function activate(ctx: PluginContext) {
 
   const machine = await createMachine(ctx, cfg)
   const sound = createSound(() => ({ on: cfg().sounds, volume: cfg().volume }))
-  /** What every reveal shares: its sound, and a toast for the first Legendary ever. */
+
+  // ─── Achievements (API 7) and the status line (API 6), where playhound has them ───
+  const trophies = createTrophies(ctx.achievements, (...args) => ctx.log(...args))
+  const setStatus = (s: PluginStatus | null) => {
+    if (typeof ctx.ui.status !== 'function')
+      return
+    try {
+      ctx.ui.status(s)
+    }
+    catch (err) {
+      ctx.log('setting the status failed', err)
+    }
+  }
+  /** Reveals running: until they're over, a new achievement or the pity count would give them away. */
+  let held = 0
+  const update = () => {
+    if (held)
+      return
+    trophies.sync(machine.state())
+    setStatus(statusOf(machine.state(), machine.active(), cfg().pityAt, machine.queue().next.length))
+  }
+  machine.subscribe(update)
+  ctx.settings.onChange(update)
+  update()
+
+  /** What every reveal shares: its sound, and the first Legendary ever told (its achievement, or a toast without them). */
   const fanfare: Fanfare = {
     sound,
+    hold() {
+      held++
+      let over = false
+      return () => {
+        if (over)
+          return
+        over = true
+        held--
+        update()
+      }
+    },
+    upgraded(to) {
+      sound.upgrade()
+      if (to === 'legendary')
+        machine.liedLow()
+    },
     revealed(p: Plan) {
-      if (p.firstLegendary)
+      if (p.firstLegendary && !trophies.available)
         ctx.ui.toast('Your first Legendary!', { tone: 'success', detail: `${p.video.title}: it's in your collection, in gold.` })
     },
   }
@@ -84,9 +141,31 @@ export default async function activate(ctx: PluginContext) {
     },
   })
   ctx.commands.register({
+    id: 'pull-ten',
+    title: 'Pull ×10 from the gacha',
+    hint: 'Ten pulls at once, played one after another, rarest last',
+    icon: TEN_ICON,
+    async run() {
+      const plans = await machine.planTen()
+      if (!plans)
+        return
+      machine.startQueue(plans)
+      const order = revealOrder(plans)
+      const best = order[order.length - 1]
+      sound.stinger(best.tier)
+      const n = Object.fromEntries(TIERS.map(t => [t, plans.filter(p => p.tier === t).length]))
+      const counts = [...TIERS].reverse().filter(t => n[t]).map(t => `${n[t]} ${TIER_INFO[t].name}`).join(' · ')
+      const m = best.modifier && modifierDef(best.modifier)
+      ctx.ui.toast(`×10: ${counts}`, { detail: `Best: ${best.video.title}${m ? `, with ${m.name}` : ''}. They play one after another, rarest last.` })
+      const first = plans.find(p => p.firstLegendary)
+      if (first)
+        fanfare.revealed(first)
+    },
+  })
+  ctx.commands.register({
     id: 'end',
     title: 'End the gacha modifier',
-    hint: 'Puts the stroke and the speed back as they were',
+    hint: 'Puts the stroke, the speed and the picture back as they were',
     icon: END_ICON,
     run() {
       if (!machine.active()) {
@@ -107,5 +186,6 @@ export default async function activate(ctx: PluginContext) {
   return () => {
     machine.dispose()
     sound.dispose()
+    setStatus(null)
   }
 }

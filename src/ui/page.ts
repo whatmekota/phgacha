@@ -1,26 +1,30 @@
-import type { Machine } from '../machine'
+import type { Machine, Plan } from '../machine'
 import type { Config } from '../settings'
 import type { Fanfare } from '../index'
 import type { PluginContext } from '../types'
 import type { CardData } from './card'
 import { sorted, tally } from '../collection'
 import { sameVideo } from '../machine'
-import { ODDS } from '../pick'
-import { reasons, TIER_INFO, TIERS } from '../rarity'
+import { ODDS, tierChances, tierCounts } from '../pick'
+import { atLeast, reasons, TIER_INFO, TIERS } from '../rarity'
 import { holdFor } from '../reveal'
 import { capsule, stars } from './art'
 import { lazyThumbs, resultCard, setTier, thumb } from './card'
 import { h, reducedMotion, svg } from './dom'
 import { celebrate } from './fx'
 import { machineView, pityMeter } from './machineView'
+import { tenGrid, tenTally, upNext } from './ten'
 import { timeline } from './timeline'
 
 /** How long the page waits after the reveal before going to the player. */
 const TO_PLAYER_MS = 2200
+/** The same after a ×10: there are ten cards to look at. */
+const TEN_TO_PLAYER_MS = 4000
 
 /**
- * The machine's page: the gacha machine with its Pull button and pity
- * meter, the last pull's card, the last pulls, and the collection.
+ * The machine's page: the gacha machine with its Pull and Pull ×10 buttons,
+ * the day's banner and the pity meter, the last pull's card (or a ×10's
+ * grid), what's up next from a ×10, the last pulls, and the collection.
  */
 export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Config, fanfare: Fanfare, pullKey: () => string | null) {
   return (el: HTMLElement) => {
@@ -34,23 +38,35 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     /** The card for a pull made while the page is up, with its reasons; else the saved last pull. */
     let shown: CardData | null = null
     let goTimer: ReturnType<typeof setTimeout> | undefined
+    let goMs = TO_PLAYER_MS
     let poolSize: number | null = null
+    let bannerTag: string | null = null
     let card: { key: string, el: HTMLElement } | null = null
+    /** A ×10's grid while it opens: skipped when the page goes. */
+    let opening: ReturnType<typeof tenGrid> | null = null
     /** The last pull rendered: one made elsewhere (the shortcut, the panel) still gets its reveal here. */
     let lastAt = machine.state().last?.at ?? 0
 
     // ─── The machine ───
     const view = machineView()
     const pullBtn = h('button', { type: 'button', class: 'phg-pull', onclick: () => void pull() }, 'Pull')
+    const tenBtn = h('button', { type: 'button', class: 'phg-pull phg-pull-ten', title: 'Ten pulls at once, played one after another', onclick: () => void pullTen() }, 'Pull ×10')
     const keyHint = h('p', { class: 'phg-faint' })
     const pity = pityMeter()
-    const odds = h('div', { class: 'phg-odds' }, ...TIERS.map((t) => {
-      const s = h('span', { text: `${TIER_INFO[t].name} ${ODDS[t]}%` })
-      s.style.setProperty('--phg-tier', TIER_INFO[t].colour)
-      return s
-    }))
+    const odds = h('div', { class: 'phg-odds', title: 'The chance of each tier in a pull. A tier with only a few videos in the pool gets less, so those few do not come up again and again.' })
+    /** The odds, or the pool's own chances once it's known. */
+    const showOdds = (chances: Record<string, number> | null) => {
+      odds.replaceChildren(...TIERS.map((t) => {
+        const pct = chances ? chances[t] * 100 : ODDS[t]
+        const s = h('span', { text: `${TIER_INFO[t].name} ${pct > 0 && pct < 1 ? '<1' : Math.round(pct)}%` })
+        s.style.setProperty('--phg-tier', TIER_INFO[t].colour)
+        return s
+      }))
+    }
+    showOdds(null)
     const streak = h('p', { class: 'phg-streak' })
-    const left = h('div', { class: 'phg-left' }, view.el, pullBtn, keyHint, pity.el, streak, odds)
+    const banner = h('p', { class: 'phg-banner', title: 'Half the time, a pull takes a video with this tag from the tier it rolled, when that tier has one. A new tag each day.' })
+    const left = h('div', { class: 'phg-left' }, banner, view.el, h('div', { class: 'phg-pulls' }, pullBtn, tenBtn), keyHint, pity.el, streak, odds)
 
     // ─── The result ───
     const right = h('div', { class: 'phg-right' })
@@ -77,10 +93,11 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     }, 'Reset the collection')
     const coll = h('div', { class: 'phg-coll' }, collHead, grid, h('div', { class: 'phg-foot' }, resetBtn))
 
-    // ─── The last pulls ───
+    // ─── Up next from a ×10, and the last pulls ───
+    const queued = h('div', { class: 'phg-recent' })
     const recent = h('div', { class: 'phg-recent' })
 
-    root.append(h('div', { class: 'phg-top' }, left, right), recent, coll)
+    root.append(h('div', { class: 'phg-top' }, left, right), queued, recent, coll)
     const io = lazyThumbs(root)
 
     function renderMachine() {
@@ -94,13 +111,26 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
           : ['Last Legendary ', h('b', { text: String(n) }), ` ${n === 1 ? 'pull' : 'pulls'} ago · ${s.legendaries} in all`]))
       const key = pullKey()
       keyHint.replaceChildren(...(key ? ['Or ', h('span', { class: 'phg-kbd', text: key }), ' anywhere in playhound'] : ['Or "Pull from the gacha" in the command palette (Ctrl K)']))
+      banner.hidden = !bannerTag
+      banner.replaceChildren(...(bannerTag ? ['Today\'s banner: ', h('b', { text: `#${bannerTag}` })] : []))
     }
 
     function renderResult(reveal = false) {
       const s = machine.state()
-      const data: CardData | null = shown?.id === s.last?.id ? shown : s.last
+      const ten = machine.ten()
+      const data: CardData | null = ten ? null : shown?.id === s.last?.id ? shown : s.last
       const kids: (HTMLElement | null)[] = []
-      if (!data) {
+      if (ten) {
+        // The same ×10 keeps its grid (the one that just opened, if it opened here).
+        const key = `ten|${ten.at}`
+        if (!card || card.key !== key) {
+          const g = tenGrid(machine, ten.plans)
+          g.showAll()
+          card = { key, el: g.el }
+        }
+        kids.push(card.el, tenTally(ten.plans))
+      }
+      else if (!data) {
         const empty = h('div', { class: 'phg-empty' }, h('b', { text: 'Nothing pulled yet' }), h('span', { text: 'Turn the crank: a video from your library, the rarer the better, maybe with a twist.' }))
         empty.prepend(svg(capsule(TIER_INFO.rare.colour, 48)))
         kids.push(empty)
@@ -112,8 +142,9 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
           card = { key, el: resultCard(machine, data, reveal) }
         kids.push(card.el)
       }
+      const ids = ten ? ten.plans.map(p => p.video.id) : data ? [data.id] : []
       const a = machine.active()
-      if (a && data && sameVideo(data.id, a.video)) {
+      if (a && ids.some(id => sameVideo(id, a.video))) {
         const live = h('div', { class: 'phg-live' })
         setTier(live, a.tier)
         const left = a.breakUntil !== null ? Math.max(0, Math.ceil((a.breakUntil - Date.now()) / 1000)) : null
@@ -124,14 +155,14 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
         )
         kids.push(live)
       }
-      if (data) {
+      if (ids.length) {
         const playing = ctx.player.state().title
         const actions = h('div', { class: 'phg-actions' })
-        if (playing && sameVideo(data.id, playing))
+        if (playing && ids.some(id => sameVideo(id, playing)))
           actions.append(h('button', { type: 'button', class: 'phg-btn', onclick: () => ctx.ui.showStage('player') }, 'Watch'))
         if (goTimer !== undefined) {
           const bar = h('div', { class: 'phg-going-bar' }, h('span'))
-          bar.style.setProperty('--phg-going', `${TO_PLAYER_MS}ms`)
+          bar.style.setProperty('--phg-going', `${goMs}ms`)
           actions.append(h('div', { class: 'phg-going', style: { flex: '1' } }, 'To the player', bar, h('button', { type: 'button', class: 'phg-link', onclick: stay }, 'Stay here')))
         }
         if (actions.childElementCount)
@@ -143,6 +174,12 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     function playAgain(id: string) {
       void machine.replay(id)
       ctx.ui.showStage('player')
+    }
+
+    function renderQueue() {
+      const strip = upNext(machine)
+      queued.hidden = !strip
+      queued.replaceChildren(...(strip ? [strip] : []))
     }
 
     function renderRecent() {
@@ -175,17 +212,52 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       resetBtn.hidden = !list.length
     }
 
+    function renderAll(reveal = false) {
+      renderMachine()
+      renderResult(reveal)
+      renderQueue()
+      renderRecent()
+      renderCollection()
+    }
+
     function stay() {
       clearTimeout(goTimer)
       goTimer = undefined
       renderResult()
     }
 
+    /** Go to the player in a moment (a setting), unless Stay here. */
+    function goSoon(ms: number) {
+      if (!cfg().toPlayer)
+        return
+      goMs = ms
+      goTimer = setTimeout(() => {
+        goTimer = undefined
+        if (alive)
+          ctx.ui.showStage('player')
+      }, ms)
+    }
+
+    function setBusy(on: boolean) {
+      busy = on
+      pullBtn.disabled = on
+      tenBtn.disabled = on
+    }
+
+    /** An Epic's or a Legendary's moment over the page (with the animation on); resolves as it fades. */
+    async function moment(p: Pick<Plan, 'tier'>) {
+      if (!cfg().animation || !atLeast(p.tier, 'epic'))
+        return
+      fx = celebrate(host, root, p.tier, { compact: false, motion: !reducedMotion(), holdMs: holdFor(p.tier) })
+      await fx.done
+      fx = null
+    }
+
     async function pull() {
       if (busy)
         return
-      busy = true
-      pullBtn.disabled = true
+      setBusy(true)
+      const release = fanfare.hold()
       stay()
       try {
         const p = await machine.plan()
@@ -193,43 +265,78 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
           return
         const c = cfg()
         if (view.wanted(c))
-          await view.animate(p.tier, { onUpgrade: () => fanfare.sound.upgrade(), onOpen: () => fanfare.sound.stinger(p.tier) })
+          await view.animate(p.tier, { onUpgrade: to => fanfare.upgraded(to), onOpen: () => fanfare.sound.stinger(p.tier) })
         else
           fanfare.sound.stinger(p.tier)
         if (!alive)
           return
         // The video loads while the moment holds.
         void machine.launch(p)
-        if (c.animation) {
-          fx = celebrate(host, root, p.tier, { compact: false, motion: !reducedMotion(), holdMs: holdFor(p.tier) })
-          await fx.done
-          fx = null
-          if (!alive)
-            return
-        }
-        shown = { id: p.video.id, title: p.video.title, tier: p.tier, modifier: p.modifier, guaranteed: p.guaranteed, isNew: p.isNew, reasons: reasons(p.score) }
+        await moment(p)
+        if (!alive)
+          return
+        shown = { id: p.video.id, title: p.video.title, tier: p.tier, modifier: p.modifier, guaranteed: p.guaranteed, isNew: p.isNew, reasons: reasons(p.score), banner: p.banner }
         lastAt = machine.state().last?.at ?? 0
         fanfare.revealed(p)
-        if (c.toPlayer)
-          goTimer = setTimeout(() => {
-            goTimer = undefined
-            if (alive)
-              ctx.ui.showStage('player')
-          }, TO_PLAYER_MS)
-        renderMachine()
-        renderResult(true)
-        renderRecent()
-        renderCollection()
+        goSoon(TO_PLAYER_MS)
+        renderAll(true)
       }
       finally {
-        busy = false
-        pullBtn.disabled = false
+        setBusy(false)
+        release()
+      }
+    }
+
+    async function pullTen() {
+      if (busy)
+        return
+      setBusy(true)
+      const release = fanfare.hold()
+      stay()
+      try {
+        const plans = await machine.planTen()
+        if (!plans || !alive)
+          return
+        const c = cfg()
+        const g = opening = tenGrid(machine, plans)
+        const best = g.order[g.order.length - 1]
+        card = { key: `ten|${machine.state().last?.at ?? 0}`, el: g.el }
+        // The ten closed capsules wait while the crank turns.
+        right.replaceChildren(g.el)
+        if (view.wanted(c)) {
+          await view.crank()
+          await g.reveal(fanfare.sound)
+        }
+        else {
+          g.showAll()
+          fanfare.sound.stinger(best.tier)
+        }
+        opening = null
+        if (!alive)
+          return
+        // The first starts while the best one's moment holds; the rest follow it.
+        machine.startQueue(plans)
+        await moment(best)
+        if (!alive)
+          return
+        shown = null
+        lastAt = machine.state().last?.at ?? 0
+        const first = plans.find(p => p.firstLegendary)
+        if (first)
+          fanfare.revealed(first)
+        goSoon(TEN_TO_PLAYER_MS)
+        renderAll()
+      }
+      finally {
+        opening = null
+        setBusy(false)
+        release()
       }
     }
 
     // A break's countdown, while one runs.
     const countdown = setInterval(() => {
-      if (machine.active()?.breakUntil != null)
+      if (!busy && machine.active()?.breakUntil != null)
         renderResult()
     }, 500)
 
@@ -239,10 +346,7 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
       if (busy)
         return
       const at = machine.state().last?.at ?? 0
-      renderMachine()
-      renderResult(at !== lastAt)
-      renderRecent()
-      renderCollection()
+      renderAll(at !== lastAt)
       lastAt = at
     })
     const offPlayer = ctx.player.onChange(() => {
@@ -252,25 +356,28 @@ export function mountPage(ctx: PluginContext, machine: Machine, cfg: () => Confi
     const refreshPool = () => {
       machine.pool().then((p) => {
         poolSize = p.length
-        if (alive)
+        bannerTag = machine.bannerFor(p)
+        showOdds(p.length ? tierChances(tierCounts(p, Date.now()), false) : null)
+        if (alive && !busy) {
+          renderMachine()
           renderCollection()
+        }
       }).catch(() => {})
     }
     const offLib = ctx.library.onChange(refreshPool)
     const offSettings = ctx.settings.onChange(() => {
-      renderMachine()
+      if (!busy)
+        renderMachine()
       refreshPool()
     })
 
-    renderMachine()
-    renderResult()
-    renderRecent()
-    renderCollection()
+    renderAll()
     refreshPool()
 
     return () => {
       alive = false
       view.skip()
+      opening?.skip()
       fx?.skip()
       clearTimeout(goTimer)
       clearInterval(countdown)

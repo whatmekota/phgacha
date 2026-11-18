@@ -1,7 +1,8 @@
 import type { ModifierId } from './modifiers'
 import type { Tier } from './rarity'
-import type { PluginContext, ScriptSnapshot } from './types'
-import { filterFor, finaleStart, RATES } from './modifiers'
+import type { PictureEffects, PlayerSnapshot, PluginContext, ScriptSnapshot } from './types'
+import { filterFor, finaleStart, modifierDef, RATES } from './modifiers'
+import { pictureEffects, pulseEffects, sameEffects } from './picture'
 import { breakPoints, dueBreak, strokeBottoms } from './strokes'
 
 /** The modifier that is on, as the UI shows it. */
@@ -15,25 +16,41 @@ export interface Active {
   breakUntil: number | null
 }
 
+/** Why a modifier ended: 'ended' is its video playing to the end with it on. */
+export type EndReason = 'video' | 'ended' | 'panic' | 'user' | 'replaced' | 'off'
+
 export interface RunnerOptions {
   finaleS: () => number
   breakEvery: () => number
   breakS: () => number
   /** Something about the active modifier changed (started, ended, a break). */
   changed: () => void
+  /** A modifier ended, and why. */
+  ended?: (a: Active, reason: EndReason) => void
+  /** The system asks for reduced motion: Pulse holds still. */
+  still?: () => boolean
 }
 
 /** How often Breaks looks at the clock. Strokes are seldom quicker than 5 a second. */
 const TICK_MS = 100
 
+/** The picture's width over its height; 16 / 9 until it's known. */
+const aspectOf = (s: PlayerSnapshot) => (s.width > 0 && s.height > 0 ? s.width / s.height : 16 / 9)
+
+// Animation frames, or a timer where there are none (tests).
+const nextFrame = (fn: () => void): number =>
+  typeof requestAnimationFrame === 'function' ? requestAnimationFrame(fn) : setTimeout(fn, 16) as unknown as number
+const cancelFrame = (h: number) => (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame(h) : clearTimeout(h))
+
 /**
  * Runs one modifier at a time and makes sure it never outlives its video.
  * It ends when another video loads (player.onChange), when the video ends
  * (playback.onEnded), on panic (safety.onPanic), when the plugin is switched
- * off, or when asked. Ending removes the filter and puts the speed back to
- * what it was, unless the user changed the speed themselves meanwhile (then
- * theirs stands). A break in progress is resumed only if the user ended the
- * modifier by hand: never after a panic, and not on another video.
+ * off, or when asked. Ending removes the filter and the picture's effect,
+ * and puts the speed back to what it was, unless the user changed the speed
+ * themselves meanwhile (then theirs stands). A break in progress is resumed
+ * only if the user ended the modifier by hand: never after a panic, and not
+ * on another video.
  */
 export function createRunner(ctx: PluginContext, opts: RunnerOptions) {
   let active: Active | null = null
@@ -47,14 +64,62 @@ export function createRunner(ctx: PluginContext, opts: RunnerOptions) {
   let lastBreak = -Infinity
   /** The player has reported the break's pause: a play after that is the user's. */
   let breakPaused = false
+  /** What player.effects has from us now: null when the picture is left alone. */
+  let fx: PictureEffects | null = null
+  /** Pulse's animation frame, while it runs. */
+  let frame = 0
+  let playing = false
+  /** Which way Tilt turns, rolled when it starts. */
+  let tiltDir: 1 | -1 = 1
 
-  function end(reason: 'video' | 'ended' | 'panic' | 'user' | 'replaced' | 'off') {
+  function setFx(next: PictureEffects | null) {
+    if (sameEffects(next, fx) || typeof ctx.player.effects !== 'function')
+      return
+    fx = next
+    try {
+      ctx.player.effects(next)
+    }
+    catch (err) {
+      ctx.log('changing the picture failed', err)
+    }
+  }
+
+  /** Where the stroke is, 0–1: the stroke axis as sent to the device, or the script's own position without one. */
+  function strokePos(): number | null {
+    try {
+      const r = ctx.motion.readout()
+      const l0 = r.device && typeof ctx.motion.axes === 'function' ? ctx.motion.axes().L0 : undefined
+      return typeof l0 === 'number' ? l0 : r.pos
+    }
+    catch {
+      return null
+    }
+  }
+
+  /** Pulse: each frame, zoom with the stroke while the video plays. */
+  function startPulse() {
+    playing = ctx.player.state().playing
+    const tick = () => {
+      frame = nextFrame(tick)
+      if (active?.id !== 'pulse')
+        return
+      setFx(pulseEffects(playing ? strokePos() : null, playing, opts.still?.() ?? false))
+    }
+    frame = nextFrame(tick)
+  }
+
+  function end(reason: EndReason) {
     if (!active)
       return
     const was = active
     active = null
     removeFilter?.()
     removeFilter = null
+    if (frame) {
+      cancelFrame(frame)
+      frame = 0
+    }
+    setFx(null)
     clearInterval(tick)
     tick = undefined
     unScripts?.()
@@ -72,6 +137,12 @@ export function createRunner(ctx: PluginContext, opts: RunnerOptions) {
       const s = ctx.player.state()
       if (s.title === was.video && !s.playing)
         ctx.playback.resume()
+    }
+    try {
+      opts.ended?.(was, reason)
+    }
+    catch (err) {
+      ctx.log('noting how a modifier ended failed', err)
     }
     opts.changed()
   }
@@ -146,6 +217,13 @@ export function createRunner(ctx: PluginContext, opts: RunnerOptions) {
     }
     if (id === 'breaks')
       startBreaks(video)
+    if (id === 'pulse') {
+      startPulse()
+    }
+    else if (modifierDef(id).picture) {
+      tiltDir = Math.random() < 0.5 ? -1 : 1
+      setFx(pictureEffects(id, { aspect: aspectOf(ctx.player.state()), dir: tiltDir }))
+    }
     opts.changed()
   }
 
@@ -157,6 +235,10 @@ export function createRunner(ctx: PluginContext, opts: RunnerOptions) {
         end('video')
         return
       }
+      playing = s.playing
+      // Tilt's zoom follows the picture's shape, once it's known.
+      if (active.id === 'tilt')
+        setFx(pictureEffects('tilt', { aspect: aspectOf(s), dir: tiltDir }))
       // The user set another speed: it's theirs now, leave it when we end.
       if (rate && Math.abs(s.rate - rate.ours) >= 0.01)
         rate = null

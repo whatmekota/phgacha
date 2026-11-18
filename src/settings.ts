@@ -1,4 +1,4 @@
-import type { ModifierId } from './modifiers'
+import type { ModifierDef, ModifierId } from './modifiers'
 import type { PoolFilter } from './pick'
 import type { SettingField } from './types'
 import { MODIFIERS } from './modifiers'
@@ -22,9 +22,16 @@ export interface Config {
   sounds: boolean
   /** 0–1. */
   volume: number
+  /** The daily banner: a featured tag, half the time within the rolled tier. */
+  banner: boolean
 }
 
 const modKey = (id: ModifierId) => `mod_${id}`
+
+function modField(m: ModifierDef): SettingField {
+  const note = m.needs === 'device' ? '. Only with a device connected.' : m.moves ? '. Not with reduced motion.' : '.'
+  return { key: modKey(m.id), type: 'switch', label: m.name, hint: m.hint + note, default: true }
+}
 
 export const FIELDS: SettingField[] = [
   { type: 'heading', label: 'Pool', hint: 'Which videos the machine pulls from.' },
@@ -35,14 +42,18 @@ export const FIELDS: SettingField[] = [
 
   { type: 'heading', label: 'Modifiers', hint: 'A twist rolled with each pull; it ends with the video, or on panic.' },
   { key: 'chance', type: 'slider', label: 'Modifier chance', hint: 'For a Rare pull. A Common gets about half of it, an Epic or Legendary more (never above 90%).', min: 0, max: 100, step: 5, unit: '%', default: 40 },
-  ...MODIFIERS.map((m): SettingField => ({ key: modKey(m.id), type: 'switch', label: m.name, hint: m.hint + (m.needs === 'device' ? '. Only with a device connected.' : '.'), default: true })),
+  ...MODIFIERS.filter(m => !m.picture).map(modField),
   { key: 'finaleS', type: 'slider', label: 'Finale length', hint: 'Finale only starts this long before the end.', min: 30, max: 300, step: 15, unit: ' s', default: 90, when: v => v.mod_finale !== false },
   { key: 'breakEvery', type: 'slider', label: 'A break every', min: 10, max: 60, step: 5, unit: ' strokes', default: 20, when: v => v.mod_breaks !== false },
   { key: 'breakS', type: 'slider', label: 'Break length', min: 2, max: 15, step: 1, unit: ' s', default: 4, when: v => v.mod_breaks !== false },
 
+  { type: 'heading', label: 'Picture modifiers', hint: 'The picture itself changed until the video ends: flipped, black and white, soft, tilted, or zooming with the stroke.' },
+  ...MODIFIERS.filter(m => m.picture).map(modField),
+
   { type: 'heading', label: 'Machine' },
+  { key: 'banner', type: 'switch', label: 'Daily banner', hint: 'Each day a tag with at least 3 videos in the pool is featured. Half the time, a pull takes a video with it from the tier it rolled, when that tier has one.', default: true },
   { key: 'pityAt', type: 'slider', label: 'Pity', hint: 'After this many pulls in a row without an Epic or better, the next one is guaranteed to be.', min: 3, max: 30, step: 1, unit: ' pulls', default: 10 },
-  { key: 'animation', type: 'switch', label: 'Pull animation', hint: 'The crank, the capsule and the reveal, grander the rarer the pull. Off, the card shows at once. With reduced motion, an Epic or Legendary still gets its title card, without the movement.', default: true },
+  { key: 'animation', type: 'switch', label: 'Pull animation', hint: 'The crank, the capsule and the reveal, grander the rarer the pull; a ×10 opens its capsules one by one. Off, the cards show at once. With reduced motion, an Epic or Legendary still gets its title card, without the movement.', default: true },
   { key: 'sounds', type: 'switch', label: 'Sounds', hint: 'A short sound on each reveal, grander the rarer: a blip, a chime, an arpeggio, a fanfare.', default: true },
   { key: 'volume', type: 'slider', label: 'Volume', min: 5, max: 100, step: 5, unit: '%', default: 40, when: v => v.sounds !== false },
   { key: 'toPlayer', type: 'switch', label: 'Go to the player after a pull', hint: 'From the machine\'s page, a moment after the reveal.', default: true },
@@ -72,5 +83,6 @@ export function readConfig(v: Record<string, unknown>): Config {
     badge: v.badge !== false,
     sounds: v.sounds !== false,
     volume: num(v.volume, 40, 0, 100) / 100,
+    banner: v.banner !== false,
   }
 }

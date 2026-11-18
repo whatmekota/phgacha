@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+For playhound 2.2.8 and newer (plugin API 7). In the plugin store, under For fun.
+
+- **Pull ×10**, next to Pull on the page and in the panel, and in the command palette. Ten pulls at once, the pity counting across them, ten different videos while the pool has enough. Ten closed capsules open one by one in a grid, rarest last; an Epic or a Legendary glows and shakes before it opens. A click opens the rest; with the animation off or reduced motion the grid shows open. All ten go into the collection, and they play one after another, rarest last: the first now, each next one when the one before ends. Only the best carries a modifier. **Up next from your ×10** shows the rest: click one to play it now, or Clear. Pulling again, playing something else, or panic ends it.
+- **The daily banner**: a tag with at least 3 videos in the pool, picked by the date, on the page as "Today's banner: #tag". Within the tier a pull rolls, half the time the video is one with the tag (when the tier has one), marked Banner on its card. A setting turns it off.
+- **Picture modifiers**: Mirror, Noir, Dreamy, Tilt (zoomed so no edge shows) and Pulse (a small zoom with each stroke, while the video plays). They end like the others, with the video, on panic or with End it, and take the effect off. Each has its own setting. Not rolled for sound alone; Pulse needs a script and isn't rolled with reduced motion.
+- **Achievements**, 20 of them, in Stats → Achievements: pull counts, the first of each tier, Legendary counts, the size of the collection, seeing Turbo and every kind of modifier through to the end, the banner, a lucky ×10, a Legendary from the pity, and three hidden ones. Pulls saved before this version count. One earned by a pull waits until its reveal is over. The first Legendary's toast is now its achievement.
+- **Fewer repeats**: a tier with only a few videos in the pool no longer takes its whole share of pulls. A library mostly of Rares had a handful of Commons, and they took 55% of the pulls between them, so the same few came up again and again. Now no video comes up more than twice as often as in a plain shuffle; the rest goes to the nearest tier. The odds under the machine are your pool's own. The banner likewise: with only a few of a tier's videos tagged, a banner video comes up at most about four times as often as the rest, not half the tier's pulls.
+- **Status on the rail**: the modifier while one is on, otherwise the pity count, with the last Legendary in the tooltip.
+- The plugin contract (`src/types.ts`) is playhound's API 7 copy.
+
 ## 0.3.0
 
 Rarer pulls feel rarer.

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { filterFor, finaleStart, MAX_CHANCE, MODIFIER_IDS, modifierChance, rollModifier } from '../src/modifiers.ts'
+import { filterFor, finaleStart, isAudio, MAX_CHANCE, MODIFIER_IDS, modifierChance, rollModifier } from '../src/modifiers.ts'
 import { FIELDS, readConfig } from '../src/settings.ts'
 
 const seq = (...xs: number[]) => () => xs.shift() ?? 0
-const everywhere = { device: true, hasScript: true, durationS: 600, finaleS: 90 }
+const everywhere = { device: true, hasScript: true, durationS: 600, finaleS: 90, picture: true, still: false }
 
 describe('modifiers', () => {
   it('scales the chance with rarity, never past 90%', () => {
@@ -23,14 +23,22 @@ describe('modifiers', () => {
 
   it('leaves out what would do nothing here', () => {
     const rolls = (situation: typeof everywhere) =>
-      new Set(Array.from({ length: 8 }, (_, i) => rollModifier('rare', { chance: 1, allowed: MODIFIER_IDS, situation, rand: seq(0, i / 8) })))
+      new Set(Array.from({ length: 32 }, (_, i) => rollModifier('rare', { chance: 1, allowed: MODIFIER_IDS, situation, rand: seq(0, i / 32) })))
+    assert.equal(rolls(everywhere).size, MODIFIER_IDS.length)
     const noDevice = rolls({ ...everywhere, device: false })
     assert.ok(!noDevice.has('invert') && !noDevice.has('half') && !noDevice.has('top'))
     const short = rolls({ ...everywhere, durationS: 120 })
     assert.ok(!short.has('finale'))
     const unscripted = rolls({ ...everywhere, hasScript: false })
-    assert.deepEqual([...unscripted].sort(), ['fast', 'finale', 'slow', 'turbo'])
+    assert.deepEqual([...unscripted].sort(), ['dreamy', 'fast', 'finale', 'mirror', 'noir', 'slow', 'tilt', 'turbo'])
+    // No picture to change (sound alone, or no player.effects); Pulse not with reduced motion.
+    const noPicture = rolls({ ...everywhere, picture: false })
+    assert.ok(['mirror', 'noir', 'dreamy', 'tilt', 'pulse'].every(id => !noPicture.has(id as never)))
+    const still = rolls({ ...everywhere, still: true })
+    assert.ok(!still.has('pulse') && still.has('tilt'))
     assert.equal(rollModifier('rare', { chance: 1, allowed: ['invert'], situation: { ...everywhere, device: false }, rand: seq(0, 0) }), null)
+    assert.equal(isAudio('Music/song.MP3'), true)
+    assert.equal(isAudio('clip.mp4'), false)
   })
 
   it('reshapes only the stroke axis', () => {

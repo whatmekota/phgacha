@@ -1,6 +1,8 @@
 // Builds dist/index.js (one self-contained ES module) and phgacha.zip
 // (manifest.json, index.js and the icon at the root, deflated).
-//   node build.mjs [--minify]
+//   node build.mjs [--minify] [--public]
+// --public writes release/phgacha-<version>.zip, release/manifest.json and
+// release/icon.svg instead: the files a GitHub release needs.
 // manifest.json here points `main` at dist/index.js, so playhound's dev mode
 // (Load from folder) runs the build straight from this folder; the zip's
 // manifest points it at index.js, where the module sits in the zip.
@@ -87,6 +89,13 @@ const out = zip([
   // The icon, for the installed list when it's installed from the zip.
   ['icon.svg', readFileSync(join(here, 'icon.svg'))],
 ])
-const file = 'phgacha.zip'
+let file = 'phgacha.zip'
+if (process.argv.includes('--public')) {
+  mkdirSync(join(here, 'release'), { recursive: true })
+  file = join('release', `phgacha-${manifest.version}.zip`)
+  // The store in playhound reads these to show the plugin before downloading it.
+  writeFileSync(join(here, 'release', 'manifest.json'), zipped)
+  writeFileSync(join(here, 'release', 'icon.svg'), readFileSync(join(here, 'icon.svg')))
+}
 writeFileSync(join(here, file), out)
 console.log(`${file}: ${out.length} bytes (v${manifest.version})`)

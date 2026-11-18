@@ -1,4 +1,4 @@
-import type { PlayerSnapshot, PluginContext, ScriptSnapshot } from '../src/types.ts'
+import type { PictureEffects, PlayerSnapshot, PluginContext, ScriptSnapshot } from '../src/types.ts'
 import assert from 'node:assert/strict'
 import { describe, it, mock } from 'node:test'
 import { createRunner } from '../src/runner.ts'
@@ -16,6 +16,9 @@ function fakeCtx() {
     filters: 0,
     panicked: false,
     clock: 0,
+    /** What player.effects has now; the stroke's position for Pulse. */
+    fx: null as PictureEffects | null,
+    pos: 0.5,
     calls: [] as string[],
     script: { video: 'a.mp4', axes: [] } as ScriptSnapshot,
     emit: () => on.change.forEach(fn => fn({ ...state })),
@@ -38,6 +41,9 @@ function fakeCtx() {
         f.calls.push(`seek ${t}`)
         return true
       },
+      effects: (fx: PictureEffects | null) => {
+        f.fx = fx
+      },
     },
     playback: {
       onEnded: sub(on.ended),
@@ -55,6 +61,7 @@ function fakeCtx() {
         f.filters++
         return () => f.filters--
       },
+      readout: () => ({ device: false, pos: f.pos }),
     },
     scripts: { current: () => f.script, onChange: sub(on.scripts) },
     safety: { panicked: () => f.panicked, onPanic: sub(on.panic) },
@@ -99,6 +106,53 @@ describe('runner', () => {
     ctx.player.setRate(2)
     r.end('user')
     assert.equal(f.state.rate, 2)
+  })
+
+  it('changes the picture, and puts it back at the end, on panic and on another video', () => {
+    const { f, ctx } = fakeCtx()
+    const r = createRunner(ctx, opts)
+    r.start('noir', 'rare', 'a.mp4')
+    assert.match(f.fx!.filter!, /grayscale/)
+    f.end()
+    assert.equal(f.fx, null)
+    r.start('mirror', 'rare', 'a.mp4')
+    assert.deepEqual(f.fx, { transform: 'scaleX(-1)' })
+    f.panic()
+    assert.equal(f.fx, null)
+    f.panicked = false
+    r.start('tilt', 'epic', 'a.mp4')
+    assert.match(f.fx!.transform!, /rotate/)
+    f.state.title = 'b.mp4'
+    f.emit()
+    assert.equal(f.fx, null)
+  })
+
+  it('pulses with the stroke only while playing, and says how a modifier ended', () => {
+    mock.timers.enable({ apis: ['setTimeout'] })
+    try {
+      const { f, ctx } = fakeCtx()
+      const ends: string[] = []
+      const r = createRunner(ctx, { ...opts, ended: (a, why) => void ends.push(`${a.id} ${why}`) })
+      r.start('pulse', 'legendary', 'a.mp4')
+      f.pos = 0
+      mock.timers.tick(20)
+      assert.equal(f.fx!.transform, 'scale(1.0500)')
+      f.state.playing = false
+      f.emit()
+      mock.timers.tick(20)
+      assert.equal(f.fx, null)
+      f.state.playing = true
+      f.emit()
+      mock.timers.tick(20)
+      assert.ok(f.fx)
+      f.end()
+      mock.timers.tick(20)
+      assert.equal(f.fx, null)
+      assert.deepEqual(ends, ['pulse ended'])
+    }
+    finally {
+      mock.timers.reset()
+    }
   })
 
   it('jumps to the finale', () => {

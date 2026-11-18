@@ -8,7 +8,7 @@ import { capsule, machine as machineArt } from './art'
 import { h, reducedMotion, svg } from './dom'
 
 /** Sleeps that a click can cut short: skipping the animation runs the rest at once. */
-function skippable() {
+export function skippable() {
   let skipped = false
   const waiting = new Set<() => void>()
   return {
@@ -55,10 +55,10 @@ export function machineView(opts: { compact?: boolean } = {}) {
     /**
      * Run the pull animation for a capsule of `tier` (see revealPlan): the
      * glow hints the tier, may step up on the way, and the wobble builds.
-     * Resolves once it's open (at once when skipped). `onUpgrade` and
-     * `onOpen` are for the sounds.
+     * Resolves once it's open (at once when skipped). `onUpgrade` (with the
+     * tier it steps up to, while not skipped) and `onOpen` are for the sounds.
      */
-    async animate(tier: Tier, hooks: { onUpgrade?: () => void, onOpen?: () => void } = {}) {
+    async animate(tier: Tier, hooks: { onUpgrade?: (to: Tier) => void, onOpen?: () => void } = {}) {
       skipper?.skip()
       const plan = revealPlan(tier, Math.random, { compact: opts.compact })
       const s = skipper = skippable()
@@ -84,7 +84,7 @@ export function machineView(opts: { compact?: boolean } = {}) {
           void drop.offsetWidth
           drop.classList.add('phg-up')
           if (!s.skipped())
-            hooks.onUpgrade?.()
+            hooks.onUpgrade?.(t)
         }
         // The wobble builds: harder with each step, and from the start for an Epic or better.
         stage.dataset.step = String(Math.min(2, i + (atLeast(tier, 'epic') ? 1 : 0)))
@@ -96,6 +96,19 @@ export function machineView(opts: { compact?: boolean } = {}) {
       hooks.onOpen?.()
       await s.sleep(320)
       stage.dataset.phase = 'done'
+      if (skipper === s)
+        skipper = null
+    },
+    /** The crank alone, for a ×10: no capsule here and no tell, the grid opens them. Resolves when done (at once when skipped). */
+    async crank(ms = 1000) {
+      skipper?.skip()
+      const s = skipper = skippable()
+      delete stage.dataset.tier
+      delete stage.dataset.step
+      stage.dataset.phase = 'crank'
+      stage.style.setProperty('--phg-crank', `${ms}ms`)
+      await s.sleep(ms)
+      delete stage.dataset.phase
       if (skipper === s)
         skipper = null
     },

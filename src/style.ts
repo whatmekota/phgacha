@@ -243,8 +243,53 @@ export const CSS = `
 .phg-badge span { overflow: hidden; text-overflow: ellipsis; }
 .phg-badge b { font-variant-numeric: tabular-nums; color: var(--phg-tier); }
 
+/* ─── Pull ×10 ─── */
+.phg-pulls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; }
+.phg-pull-ten { min-width: 0; padding: 0 20px; background: var(--bg-800); color: var(--text); box-shadow: 0 4px 0 color-mix(in srgb, var(--accent) 55%, #000), inset 0 0 0 2px var(--accent); }
+.phg-pull-ten:hover { background: var(--bg-700); }
+.phg-pull-ten:active { box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 55%, #000), inset 0 0 0 2px var(--accent); }
+.phg-panel .phg-pulls { flex-wrap: nowrap; gap: 6px; }
+.phg-panel .phg-pulls .phg-pull { flex: 1; }
+.phg-panel .phg-pulls .phg-pull-ten { flex: none; padding: 0 12px; }
+
+/* The ten capsules, then the ten cards: rarest last. */
+.phg-ten { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; user-select: none; }
+.phg-ten[data-live] { cursor: pointer; }
+.phg-ten-compact { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.phg-ten-cell { position: relative; min-width: 0; }
+.phg-ten-card { position: relative; display: flex; flex-direction: column; height: 100%; border-radius: 8px; border: 2px solid var(--phg-tier); background: var(--bg-850); overflow: hidden; opacity: 0; transform: scale(.85); }
+.phg-ten-compact .phg-ten-card { border-radius: 6px; }
+.phg-ten-cell[data-open] .phg-ten-card { opacity: 1; transform: none; animation: phg-pop .35s cubic-bezier(.2, .9, .3, 1.4); }
+.phg-ten-cell[data-open][data-tier=epic] .phg-ten-card { box-shadow: 0 0 14px color-mix(in srgb, var(--phg-tier) 55%, transparent); }
+.phg-ten-cell[data-open][data-tier=legendary] .phg-ten-card { border-color: transparent; background: linear-gradient(var(--bg-850), var(--bg-850)) padding-box, conic-gradient(from var(--phg-angle), #fbbf24, #fff7d6, #f59e0b, #fde68a, #b45309, #fbbf24) border-box; box-shadow: 0 0 16px color-mix(in srgb, var(--phg-tier) 60%, transparent); animation: phg-pop .35s cubic-bezier(.2, .9, .3, 1.4), phg-foil 5s linear infinite; }
+.phg-ten-cap { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; transition: opacity .25s ease, transform .25s ease; }
+.phg-ten-cap svg { display: block; overflow: visible; filter: drop-shadow(0 3px 4px rgb(0 0 0 / .3)); }
+.phg-ten-cap .phg-cap-top path:first-child { transition: fill .25s ease; }
+/* An Epic or better glows its colour and shakes before it opens. */
+.phg-ten-cell[data-charge] .phg-ten-cap svg { --phg-amp: 14deg; animation: phg-wobble .22s ease-in-out infinite; filter: drop-shadow(0 0 10px var(--phg-tier)) drop-shadow(0 0 3px #fff); }
+.phg-ten-cell[data-charge] .phg-ten-cap .phg-cap-top path:first-child { fill: var(--phg-tier); }
+.phg-ten-cell[data-open] .phg-ten-cap { opacity: 0; transform: scale(1.5); }
+.phg-ten-body { display: flex; flex-direction: column; gap: 1px; padding: 4px 6px 5px; min-width: 0; }
+.phg-ten-stars { color: var(--phg-tier); font-size: 10px; letter-spacing: 1px; }
+.phg-ten-title { font-size: 11px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phg-ten-new { position: absolute; top: 4px; left: 4px; padding: 0 5px; font-size: 9px; }
+.phg-ten-compact .phg-tl-tag { right: 2px; bottom: 2px; font-size: 8px; line-height: 12px; padding: 0 3px; }
+.phg-ten-tally { margin-left: 0; }
+
+/* Up next from a ×10. */
+.phg-upnext { display: flex; flex-direction: column; gap: 6px; }
+.phg-upnext-clear { margin-left: auto; }
+.phg-upnext-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: -2px; }
+.phg-upnext-head .phg-link { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+
+/* The day's banner. */
+.phg-banner { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 99px; font-size: 12px; color: var(--text-muted); background: color-mix(in srgb, var(--accent) 12%, var(--bg-850)); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.phg-banner[hidden] { display: none; }
+.phg-banner b { color: var(--accent-light, var(--accent)); font-weight: 700; }
+.phg-chip[data-k=banner] { background: var(--accent); color: var(--accent-contrast); }
+
 @media (prefers-reduced-motion: reduce) {
-  .phg-card.phg-reveal, .phg-mini.phg-reveal, .phg-card[data-tier=legendary]::after, .phg-live-dot, .phg-card[data-tier], .phg-tile[data-tier], .phg-tl-item[data-tier], .phg-mini[data-tier], .phg-machine-svg { animation: none !important; }
-  .phg-tile, .phg-badge, .phg-tl-item { transition: none; }
+  .phg-card.phg-reveal, .phg-mini.phg-reveal, .phg-card[data-tier=legendary]::after, .phg-live-dot, .phg-card[data-tier], .phg-tile[data-tier], .phg-tl-item[data-tier], .phg-mini[data-tier], .phg-machine-svg, .phg-ten-card, .phg-ten-cap svg { animation: none !important; }
+  .phg-tile, .phg-badge, .phg-tl-item, .phg-ten-cap { transition: none; }
 }
 `

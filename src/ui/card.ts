@@ -16,6 +16,8 @@ export interface CardData {
   isNew: boolean
   /** Why it's that rare; only known for a pull made this session. */
   reasons?: string[]
+  /** It has the day's banner tag; only known for a pull made this session. */
+  banner?: boolean
 }
 
 /** Sets the tier colour variable (Object.assign on style can't set custom properties). */
@@ -84,6 +86,7 @@ export function resultCard(machine: Machine, d: CardData, reveal: boolean): HTML
   const ribbon = h('div', { class: 'phg-ribbon' },
     d.isNew && h('span', { 'class': 'phg-chip', 'data-k': 'new', 'text': 'New' }),
     d.guaranteed && h('span', { 'class': 'phg-chip', 'data-k': 'pity', 'text': 'Pity' }),
+    d.banner && h('span', { 'class': 'phg-chip', 'data-k': 'banner', 'text': 'Banner' }),
   )
   t.append(ribbon)
   const info = TIER_INFO[d.tier]
