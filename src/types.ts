@@ -83,6 +83,25 @@ export type SettingField
       run: (values: Record<string, unknown>) => void | string | Promise<void | string>
       default?: undefined
     })
+    /**
+     * A button that picks files (API 7): "Add sounds…", "Import a list".
+     * It opens the file dialog, and `run` gets the files picked (never an
+     * empty list: cancelling doesn't call it) and the current values. What it
+     * returns or throws shows under it, as for a button. Nothing is saved
+     * under `key`: keep what you need with `storage`.
+     */
+    | (FieldBase & {
+      type: 'file'
+      /** The button's own text; `label` when absent. */
+      text?: string
+      tone?: 'primary' | 'secondary' | 'danger'
+      /** What the dialog offers, as for an <input accept>: "audio/*", ".funscript,.json". Any file when absent. */
+      accept?: string
+      /** Let several be picked at once. */
+      multiple?: boolean
+      run: (files: File[], values: Record<string, unknown>) => void | string | Promise<void | string>
+      default?: undefined
+    })
 
 interface FieldBase {
   key: string
@@ -198,6 +217,19 @@ export interface PlayerSnapshot {
   /** The picture's own size in pixels (API 3): 0 until the video has loaded, and for sound alone or a video playing elsewhere. Portrait when height > width. */
   width: number
   height: number
+  /** The player's sound (API 7): muted, and its volume 0–1. */
+  muted: boolean
+  volume: number
+  /** It plays in another app, a VR headset (API 7): its sound, if any, is there. */
+  external: boolean
+  /**
+   * Sound is coming out of playhound's player now (API 7): playing, not
+   * muted, the volume up, and what plays has a sound track. False for a
+   * video playing elsewhere (its sound is in the headset). Null while that
+   * can't be told yet: the first moments of a video, before the browser has
+   * decoded any of its sound.
+   */
+  audible: boolean | null
 }
 
 /** Where the picture is drawn in the player (player.picture), in CSS px from the player's top-left. */
@@ -278,7 +310,7 @@ export interface MotionTarget {
 export interface MotionReadout {
   spm: number
   depth: number
-  /** Where the stroke axis is now, 0-1: the generator's output, or a script's while one plays. */
+  /** Where the stroke axis is now, 0-1: the generator's output, or a script's while one plays; before range and invert, as motion.axes has it. */
   pos: number
   /** The app's speed ceiling, strokes per minute. */
   maxSpm: number
@@ -286,8 +318,17 @@ export interface MotionReadout {
   device: boolean
   /** The generator's stroke phase, 0–1 with 0 at the bottom; null while it isn't stroking (a script plays, or it is off). */
   phase: number | null
-  /** Milliseconds until the generator's stroke is next at the bottom (where a beat lands); null while it isn't stroking. */
+  /** Milliseconds until the generator's stroke is next at the bottom (where a beat lands); null while it isn't stroking. A stroke the music source doubles counts as two. */
   nextStrokeInMs: number | null
+  /** The generator's stroke shape (API 7): how `phase` maps to a position. */
+  shape: 'sine' | 'ease' | 'pulse' | 'saw' | 'sharp'
+  /**
+   * The user's device latency (API 7), ms: scripts are sent to the device
+   * this much ahead of the picture, so the device moves with it. Something
+   * that should land with the picture (a sound) follows the video's clock,
+   * not motion.axes, which runs this much early while a script plays.
+   */
+  latencyMs: number
   /**
    * A script is playing and drives the stroke: the generator (motion.take)
    * waits until it stops, since the two never fight over the same axis.
@@ -714,7 +755,13 @@ export interface PluginContext {
     /** Called after any setting changes; returns an unsubscribe. */
     onChange: (fn: (values: Record<string, unknown>) => void) => () => void
   }
-  /** Small persistent key/value store for the plugin's own data. */
+  /**
+   * A persistent key/value store for the plugin's own data, in playhound's
+   * IndexedDB: values are copied as structured clones, so objects, arrays,
+   * ArrayBuffers, Blobs and Files all keep. No fixed limit beyond the
+   * browser's own quota (a share of the free disk); it goes when the plugin
+   * is removed.
+   */
   storage: {
     get: <T = unknown>(key: string) => Promise<T | undefined>
     set: (key: string, value: unknown) => Promise<void>
@@ -940,10 +987,23 @@ export interface PluginContext {
     /**
      * Where every axis was last sent (API 6, permission `player` or
      * `device`), 0–1 by TCode channel ("L0" the stroke, "R2" pitch…),
-     * before the user's range: what the Motion panel's traces draw. Read
-     * it each frame to draw your own.
+     * before the user's range and invert: 0 is the bottom of the stroke
+     * whatever the device is set to. Read it each frame to draw your own.
      */
     axes: () => Record<string, number>
+    /**
+     * The same after the user's range and invert (API 7): where the device
+     * itself is told to be, what the Motion panel's traces draw.
+     */
+    output: () => Record<string, number>
+    /**
+     * Every position as it is sent (API 7, permission `player` or `device`),
+     * before range and invert, as motion.axes has it: the axis, the
+     * position 0–1, and in how many ms it should be there (0: it is there
+     * now). Many times a second for each axis that moves, so keep it light.
+     * Returns an unsubscribe; it also ends when the plugin stops.
+     */
+    onAxis: (fn: (axis: string, pos: number, inMs: number) => void) => () => void
   }
   /**
    * Heart rate (API 6, permission `heart`): playhound's own Bluetooth
